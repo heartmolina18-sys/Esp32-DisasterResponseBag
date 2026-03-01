@@ -221,15 +221,12 @@ void setup() {
 
   // Check if recipients are configured
   if (config.telegramCount == 0 && config.smsCount == 0) {
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.println("NO RECIPIENTS!");
-    display.println();
-    display.println("Hold button on boot");
-    display.println("to enter setup mode");
-    display.println();
-    display.println("WiFi: DisasterBag-Setup");
-    display.display();
+    display.clearBuffer();
+    display.drawStr(0, 10, "NO RECIPIENTS!");
+    display.drawStr(0, 28, "Hold CONFIG button");
+    display.drawStr(0, 40, "on boot for setup");
+    display.drawStr(0, 56, "WiFi: DisasterBag-Setup");
+    display.sendBuffer();
     delay(5000);
   }
 
@@ -284,13 +281,11 @@ bool checkConfigMode() {
   
   // Check if config button is pressed on boot
   if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.println("CONFIG BUTTON");
-    display.println("DETECTED!");
-    display.println("");
-    display.println("Entering config...");
-    display.display();
+    display.clearBuffer();
+    display.drawStr(0, 12, "CONFIG BUTTON");
+    display.drawStr(0, 26, "DETECTED!");
+    display.drawStr(0, 46, "Entering config...");
+    display.sendBuffer();
     delay(1000);
     return true;
   }
@@ -318,20 +313,13 @@ void startConfigMode() {
 
   Serial.println("[CONFIG] Web server started!");
   
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println("CONFIG MODE");
-  display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
-  display.setCursor(0, 14);
-  display.println("WiFi Network:");
-  display.println(AP_SSID);
-  display.println();
-  display.println("Password:");
-  display.println(AP_PASSWORD);
-  display.println();
-  display.print("Go to: ");
-  display.println(IP);
-  display.display();
+  display.clearBuffer();
+  display.drawStr(0, 10, "CONFIG MODE");
+  display.drawLine(0, 14, 128, 14);
+  display.drawStr(0, 26, "WiFi: DisasterBag-Setup");
+  display.drawStr(0, 38, "Pass: disaster123");
+  display.drawStr(0, 52, "Go to: 192.168.4.1");
+  display.sendBuffer();
 }
 
 void updateConfigDisplay() {
@@ -711,10 +699,9 @@ void initGPS() {
 void initLTE() {
   Serial.println("[LTE] Initializing Air780e 4G module...");
   
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println("Initializing 4G...");
-  display.display();
+  display.clearBuffer();
+  display.drawStr(0, 10, "Initializing 4G...");
+  display.sendBuffer();
 
   pinMode(LTE_PWR_PIN, OUTPUT);
   
@@ -731,8 +718,8 @@ void initLTE() {
   
   if (!sendATCommand("AT", "OK", 2000)) {
     Serial.println("[LTE] WARNING: Module not responding");
-    display.println("4G: No Response");
-    display.display();
+    display.drawStr(0, 24, "4G: No Response");
+    display.sendBuffer();
     delay(1000);
     return;
   }
@@ -765,8 +752,8 @@ void initLTE() {
   
   Serial.println("[LTE] 4G module initialized!");
   
-  display.println("4G: Ready");
-  display.display();
+  display.drawStr(0, 24, "4G: Ready");
+  display.sendBuffer();
   delay(500);
 }
 
@@ -832,13 +819,12 @@ void handleImOkButton() {
   currentState = STATE_SENDING_ALERT;
   digitalWrite(LED_PIN, HIGH);
   
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(10, 10);
-  display.println("SENDING");
-  display.println(" STATUS");
-  display.setTextSize(1);
-  display.display();
+  display.clearBuffer();
+  display.setFont(u8g2_font_10x20_tf);
+  display.drawStr(10, 25, "SENDING");
+  display.drawStr(10, 48, "STATUS");
+  display.sendBuffer();
+  display.setFont(u8g2_font_6x10_tf);
   
   String message = buildStatusMessage();
   bool success = sendToAllRecipients(message);
@@ -846,24 +832,21 @@ void handleImOkButton() {
   if (success) {
     Serial.println("[STATUS] Status sent successfully!");
     
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setCursor(10, 15);
-    display.println("STATUS");
-    display.println(" SENT!");
-    display.setTextSize(1);
-    display.display();
+    display.clearBuffer();
+    display.setFont(u8g2_font_10x20_tf);
+    display.drawStr(15, 25, "STATUS");
+    display.drawStr(20, 48, "SENT!");
+    display.sendBuffer();
+    display.setFont(u8g2_font_6x10_tf);
     delay(2000);
   } else {
     currentState = STATE_ERROR;
     Serial.println("[STATUS] Failed to send status!");
     
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 20);
-    display.println("STATUS FAILED!");
-    display.println("Check connection");
-    display.display();
+    display.clearBuffer();
+    display.drawStr(0, 24, "STATUS FAILED!");
+    display.drawStr(0, 40, "Check connection");
+    display.sendBuffer();
     delay(2000);
   }
   
@@ -877,13 +860,12 @@ void handleEmergencyButton() {
   currentState = STATE_SENDING_ALERT;
   digitalWrite(LED_PIN, HIGH);
   
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(10, 10);
-  display.println("SENDING");
-  display.println(" ALERT!");
-  display.setTextSize(1);
-  display.display();
+  display.clearBuffer();
+  display.setFont(u8g2_font_10x20_tf);
+  display.drawStr(10, 25, "SENDING");
+  display.drawStr(15, 48, "ALERT!");
+  display.sendBuffer();
+  display.setFont(u8g2_font_6x10_tf);
   
   String message = buildAlertMessage();
   bool success = sendToAllRecipients(message);
@@ -894,24 +876,21 @@ void handleEmergencyButton() {
     alertSentTime = millis();
     Serial.println("[ALERT] Alert sent successfully!");
     
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setCursor(20, 20);
-    display.println("ALERT");
-    display.println(" SENT!");
-    display.setTextSize(1);
-    display.display();
+    display.clearBuffer();
+    display.setFont(u8g2_font_10x20_tf);
+    display.drawStr(25, 25, "ALERT");
+    display.drawStr(25, 48, "SENT!");
+    display.sendBuffer();
+    display.setFont(u8g2_font_6x10_tf);
     delay(2000);
   } else {
     currentState = STATE_ERROR;
     Serial.println("[ALERT] Failed to send alert!");
     
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 20);
-    display.println("ALERT FAILED!");
-    display.println("Check connection");
-    display.display();
+    display.clearBuffer();
+    display.drawStr(0, 24, "ALERT FAILED!");
+    display.drawStr(0, 40, "Check connection");
+    display.sendBuffer();
     delay(2000);
   }
   
@@ -937,11 +916,9 @@ bool sendToAllRecipients(String message) {
   if (!anySuccess && config.smsCount > 0) {
     Serial.println("[SEND] Telegram failed, trying SMS fallback...");
     
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 20);
-    display.println("Trying SMS...");
-    display.display();
+    display.clearBuffer();
+    display.drawStr(0, 30, "Trying SMS...");
+    display.sendBuffer();
     
     for (int i = 0; i < config.smsCount; i++) {
       Serial.print("[SEND] Sending SMS to: ");
@@ -1121,81 +1098,74 @@ void updateDisplay() {
   if (millis() - lastDisplayUpdate < 500) return;
   lastDisplayUpdate = millis();
   
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
+  display.clearBuffer();
   
-  // Header with battery
-  display.setCursor(0, 0);
-  display.print(config.deviceName);
+  // Header with device name
+  display.drawStr(0, 8, config.deviceName);
   
+  // Battery indicator
   if (batteryVoltage > 0.5) {
-    display.setCursor(90, 0);
-    display.print(batteryPercent);
-    display.print("%");
+    char batStr[8];
+    sprintf(batStr, "%d%%", batteryPercent);
+    display.drawStr(90, 8, batStr);
     
-    display.drawRect(115, 0, 12, 8, SSD1306_WHITE);
-    display.fillRect(127, 2, 1, 4, SSD1306_WHITE);
+    // Battery icon
+    display.drawFrame(115, 0, 12, 8);
+    display.drawBox(127, 2, 1, 4);
     int fillWidth = map(batteryPercent, 0, 100, 0, 10);
-    display.fillRect(116, 1, fillWidth, 6, SSD1306_WHITE);
+    display.drawBox(116, 1, fillWidth, 6);
   }
   
-  display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
+  display.drawLine(0, 11, 128, 11);
   
   // GPS Status
-  display.setCursor(0, 14);
-  display.print("GPS: ");
   if (gpsFixed) {
-    display.println("FIXED");
-    display.setCursor(0, 24);
-    display.print("Lat: ");
-    display.println(latitude, 4);
-    display.print("Lon: ");
-    display.println(longitude, 4);
-  } else {
-    display.println("Searching...");
-    display.setCursor(0, 24);
-    display.print("Satellites: ");
-    display.println(satellites);
+    display.drawStr(0, 22, "GPS: FIXED");
     
-    static int dots = 0;
-    display.setCursor(0, 34);
-    for (int i = 0; i < (dots % 4); i++) {
-      display.print(".");
-    }
-    dots++;
+    char latStr[20], lonStr[20];
+    sprintf(latStr, "Lat: %.4f", latitude);
+    sprintf(lonStr, "Lon: %.4f", longitude);
+    display.drawStr(0, 34, latStr);
+    display.drawStr(0, 44, lonStr);
+  } else {
+    display.drawStr(0, 22, "GPS: Searching...");
+    
+    char satStr[16];
+    sprintf(satStr, "Satellites: %d", satellites);
+    display.drawStr(0, 34, satStr);
   }
   
   // Status bar
-  display.drawLine(0, 48, 128, 48, SSD1306_WHITE);
-  display.setCursor(0, 52);
+  display.drawLine(0, 50, 128, 50);
   
+  const char* statusText;
   switch (currentState) {
     case STATE_WAITING_GPS:
-      display.print("Waiting for GPS...");
+      statusText = "Waiting for GPS...";
       break;
     case STATE_READY:
-      display.print("TAP=SOS HOLD=OK");
+      statusText = "TAP=SOS HOLD=OK";
       break;
     case STATE_SENDING_ALERT:
-      display.print("Sending...");
+      statusText = "Sending...";
       break;
     case STATE_ALERT_SENT:
-      display.print("Alert Sent!");
+      statusText = "Alert Sent!";
       break;
     case STATE_ERROR:
-      display.print("ERROR!");
+      statusText = "ERROR!";
       break;
     default:
-      display.print("Initializing...");
+      statusText = "Initializing...";
   }
+  display.drawStr(0, 62, statusText);
   
-  // Alert count and recipient count
-  display.setCursor(100, 52);
-  display.print("#");
-  display.print(alertCount);
+  // Alert count
+  char countStr[8];
+  sprintf(countStr, "#%d", alertCount);
+  display.drawStr(105, 62, countStr);
   
-  display.display();
+  display.sendBuffer();
 }
 
 void updateLED() {

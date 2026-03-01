@@ -41,7 +41,7 @@
 
 // EEPROM Configuration
 #define EEPROM_SIZE 1024
-#define EEPROM_MAGIC 0xDBAG  // Magic number to check if EEPROM is initialized
+#define EEPROM_MAGIC 0xDBA6  // Magic number to check if EEPROM is initialized
 
 // APN Configuration - Can be changed via web interface
 #define DEFAULT_APN "internet"

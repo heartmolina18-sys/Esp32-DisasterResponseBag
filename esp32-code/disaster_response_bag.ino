@@ -21,8 +21,7 @@
  */
 
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
 #include <WiFi.h>
@@ -59,11 +58,9 @@
 #define LTE_PWR_PIN  4
 #define LTE_BAUD     115200
 
-// OLED Display
+// OLED Display (SH1106 via I2C)
 #define SCREEN_WIDTH   128
 #define SCREEN_HEIGHT  64
-#define OLED_RESET     -1
-#define OLED_ADDRESS   0x3C
 
 // Emergency Button
 #define BUTTON_PIN     33
@@ -102,7 +99,8 @@ Config config;
 // ==================== OBJECTS ====================
 
 // Display
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+// U8g2 display for SH1106 (I2C, 128x64)
+U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 // GPS
 TinyGPSPlus gps;
@@ -683,36 +681,15 @@ void saveConfig() {
 // ==================== INITIALIZATION FUNCTIONS ====================
 
 void initDisplay() {
-  Serial.println("[OLED] Initializing display...");
+  Serial.println("[OLED] Initializing SH1106 display...");
   
-  // Initialize I2C with correct pins (SDA=21, SCL=22)
-  Wire.begin(21, 22);
-  delay(100);
-  
-  // Try primary address 0x3C first
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("[OLED] Address 0x3C failed, trying 0x3D...");
-    
-    // Try alternate address 0x3D
-    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
-      Serial.println("[OLED] ERROR: SSD1306 not found at 0x3C or 0x3D!");
-      while (true);
-    }
-  }
-  
-  // Clear any garbage on display
-  display.clearDisplay();
-  display.display();
-  delay(100);
-  
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println(config.deviceName);
-  display.println("v2.0");
-  display.println();
-  display.println("Initializing...");
-  display.display();
+  display.begin();
+  display.setFont(u8g2_font_6x10_tf);
+  display.clearBuffer();
+  display.drawStr(0, 10, config.deviceName);
+  display.drawStr(0, 22, "v2.0");
+  display.drawStr(0, 44, "Initializing...");
+  display.sendBuffer();
   
   Serial.println("[OLED] Display initialized!");
   delay(1000);
@@ -723,10 +700,9 @@ void initGPS() {
   
   GPSSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println("Initializing GPS...");
-  display.display();
+  display.clearBuffer();
+  display.drawStr(0, 10, "Initializing GPS...");
+  display.sendBuffer();
   
   Serial.println("[GPS] GPS module initialized!");
   delay(500);

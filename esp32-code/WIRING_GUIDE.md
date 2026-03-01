@@ -6,7 +6,7 @@ You no longer need to edit code to change recipients!
 
 ### How to Enter Config Mode
 
-1. **Hold the button while powering on** the ESP32 (hold for 3 seconds)
+1. **Press and hold the CONFIG button (GPIO 32)** while powering on the ESP32
 2. The OLED will display:
    ```
    CONFIG MODE
@@ -39,7 +39,8 @@ You no longer need to edit code to change recipients!
 | Neo6M GPS | 1 | GPS module for location tracking |
 | Air780e | 1 | 4G LTE module for cellular connectivity |
 | SSD1306 OLED | 1 | 128x64 pixel display |
-| Push Button | 1 | Emergency alert trigger |
+| Push Button (Emergency) | 1 | Emergency alert trigger (GPIO 33) |
+| Push Button (Config) | 1 | Enter config mode on boot (GPIO 32) |
 | SIM Card | 1 | Active data plan required |
 | LiPo Battery | 1 | 3.7V LiPo battery (1000-3000mAh recommended) |
 | 100k Resistors | 2 | For voltage divider (battery monitoring) |
@@ -76,6 +77,16 @@ You no longer need to edit code to change recipients!
         │  │ PWR ← GPIO 4        │    │  │  (Uses internal pullup) │
         │  └─────────────────────┘    │  └─────────────────────────┘
         └─────────────────────────────┘
+        
+        ┌─────────────────────────────┐
+        │       Config Button         │
+        │  ┌─────────────────────┐    │
+        │  │ Pin 1 → GPIO 32     │    │
+        │  │ Pin 2 → GND         │    │
+        │  └─────────────────────┘    │
+        │                             │
+        │  (Hold on boot for config)  │
+        └─────────────────────────────┘
 ```
 
 ## Detailed Pin Connections
@@ -107,13 +118,21 @@ You no longer need to edit code to change recipients!
 | SDA | GPIO 21 | White |
 | SCL | GPIO 22 | Gray |
 
-### Emergency Button
+### Emergency Button (SOS / I'm OK)
 | Button Pin | ESP32 Pin |
 |------------|-----------|
 | Terminal 1 | GPIO 33 |
 | Terminal 2 | GND |
 
-> The button uses the ESP32's internal pull-up resistor, no external resistor needed.
+> Uses internal pull-up. Short press = SOS, Long press (2 sec) = I'm OK
+
+### Config Button
+| Button Pin | ESP32 Pin |
+|------------|-----------|
+| Terminal 1 | GPIO 32 |
+| Terminal 2 | GND |
+
+> Uses internal pull-up. Hold while powering on to enter config mode.
 
 ### Battery Monitoring (Voltage Divider)
 

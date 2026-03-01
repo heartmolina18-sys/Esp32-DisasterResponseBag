@@ -65,15 +65,15 @@
 #define OLED_RESET     -1
 #define OLED_ADDRESS   0x3C
 
-// Button
+// Emergency Button
 #define BUTTON_PIN     33
 #define DEBOUNCE_DELAY 50
 
+// Config Mode Button (separate button)
+#define CONFIG_BUTTON_PIN  32
+
 // LED Indicator (built-in)
 #define LED_PIN        2
-
-// Config Mode Button (same button, hold on boot)
-#define CONFIG_HOLD_TIME 3000
 
 // Battery Monitoring (voltage divider)
 #define BATTERY_PIN    35
@@ -187,9 +187,12 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  // Initialize Button
+// Initialize Emergency Button
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-
+  
+  // Initialize Config Button
+  pinMode(CONFIG_BUTTON_PIN, INPUT_PULLUP);
+  
   // Initialize Battery Monitoring
   pinMode(BATTERY_PIN, INPUT);
   analogReadResolution(12);
@@ -280,18 +283,18 @@ void loop() {
 
 bool checkConfigMode() {
   Serial.println("[CONFIG] Checking for config mode...");
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println("Hold button for");
-  display.println("CONFIG MODE...");
-  display.display();
-
-  unsigned long startTime = millis();
-  while (digitalRead(BUTTON_PIN) == LOW) {
-    if (millis() - startTime >= CONFIG_HOLD_TIME) {
-      return true;
-    }
-    delay(100);
+  
+  // Check if config button is pressed on boot
+  if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("CONFIG BUTTON");
+    display.println("DETECTED!");
+    display.println("");
+    display.println("Entering config...");
+    display.display();
+    delay(1000);
+    return true;
   }
   return false;
 }

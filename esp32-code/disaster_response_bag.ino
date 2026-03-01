@@ -118,6 +118,7 @@ WebServer server(80);
 double latitude = 0.0;
 double longitude = 0.0;
 double altitude = 0.0;
+bool locationFromLBS = false;  // true if location from cell tower, false if from GPS
 int satellites = 0;
 bool gpsFixed = false;
 String gpsTime = "--:--:--";
@@ -773,6 +774,69 @@ void updateBattery() {
   batteryPercent = constrain(batteryPercent, 0, 100);
 }
 
+// Get location from Cell Tower (LBS) using Air780e
+bool getCellTowerLocation() {
+  Serial.println("[LBS] Getting cell tower location...");
+  
+  // Enable LBS function
+  if (!sendATCommand("AT+CLBS=4,1", "OK", 3000)) {
+    Serial.println("[LBS] Failed to enable LBS");
+    return false;
+  }
+  
+  delay(500);
+  
+  // Request location (AT+CLBS=1,1 returns lat,lon)
+  LTESerial.println("AT+CLBS=1,1");
+  
+  String response = "";
+  unsigned long startTime = millis();
+  
+  while (millis() - startTime < 15000) {  // 15 second timeout
+    while (LTESerial.available()) {
+      char c = LTESerial.read();
+      response += c;
+    }
+    
+    // Check for successful response: +CLBS: 0,lat,lon,accuracy,date,time
+    if (response.indexOf("+CLBS: 0,") != -1) {
+      Serial.println("[LBS] Got response: " + response);
+      
+      // Parse the response
+      int start = response.indexOf("+CLBS: 0,") + 9;
+      int comma1 = response.indexOf(",", start);
+      int comma2 = response.indexOf(",", comma1 + 1);
+      
+      if (comma1 > start && comma2 > comma1) {
+        String latStr = response.substring(start, comma1);
+        String lonStr = response.substring(comma1 + 1, comma2);
+        
+        latitude = latStr.toDouble();
+        longitude = lonStr.toDouble();
+        locationFromLBS = true;
+        
+        Serial.print("[LBS] Cell Tower Location - Lat: ");
+        Serial.print(latitude, 6);
+        Serial.print(", Lon: ");
+        Serial.println(longitude, 6);
+        
+        return true;
+      }
+    }
+    
+    // Check for error
+    if (response.indexOf("+CLBS: 1") != -1 || response.indexOf("ERROR") != -1) {
+      Serial.println("[LBS] Location request failed");
+      return false;
+    }
+    
+    delay(100);
+  }
+  
+  Serial.println("[LBS] Timeout waiting for location");
+  return false;
+}
+
 void updateGPS() {
   while (GPSSerial.available() > 0) {
     char c = GPSSerial.read();
@@ -783,6 +847,7 @@ void updateGPS() {
     latitude = gps.location.lat();
     longitude = gps.location.lng();
     gpsFixed = true;
+    locationFromLBS = false;  // Location from GPS, not LBS
     
     if (currentState == STATE_WAITING_GPS) {
       currentState = STATE_READY;
@@ -818,6 +883,17 @@ void handleImOkButton() {
   
   currentState = STATE_SENDING_ALERT;
   digitalWrite(LED_PIN, HIGH);
+  
+  // If no GPS fix, try cell tower location
+  if (!gpsFixed) {
+    display.clearBuffer();
+    display.drawStr(0, 20, "No GPS signal");
+    display.drawStr(0, 35, "Getting cell tower");
+    display.drawStr(0, 50, "location...");
+    display.sendBuffer();
+    
+    getCellTowerLocation();
+  }
   
   display.clearBuffer();
   display.setFont(u8g2_font_10x20_tf);
@@ -859,6 +935,17 @@ void handleEmergencyButton() {
   
   currentState = STATE_SENDING_ALERT;
   digitalWrite(LED_PIN, HIGH);
+  
+  // If no GPS fix, try cell tower location
+  if (!gpsFixed) {
+    display.clearBuffer();
+    display.drawStr(0, 20, "No GPS signal");
+    display.drawStr(0, 35, "Getting cell tower");
+    display.drawStr(0, 50, "location...");
+    display.sendBuffer();
+    
+    getCellTowerLocation();
+  }
   
   display.clearBuffer();
   display.setFont(u8g2_font_10x20_tf);
@@ -939,14 +1026,21 @@ String buildStatusMessage() {
   msg += "Device: " + String(config.deviceName) + "\n";
   msg += "Status: I'm OK\n\n";
   
-  if (gpsFixed) {
-    msg += "Location:\n";
+  if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
+    msg += "Location";
+    if (locationFromLBS) {
+      msg += " (Cell Tower - approx):\n";
+    } else {
+      msg += " (GPS):\n";
+    }
     msg += "Lat: " + String(latitude, 6) + "\n";
     msg += "Lon: " + String(longitude, 6) + "\n";
-    msg += "Alt: " + String(altitude, 1) + "m\n\n";
-    msg += "Maps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
+    if (!locationFromLBS) {
+      msg += "Alt: " + String(altitude, 1) + "m\n";
+    }
+    msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
   } else {
-    msg += "GPS: Not available\n\n";
+    msg += "Location: Not available\n\n";
   }
   
   msg += "Battery: " + String(batteryPercent) + "% (" + String(batteryVoltage, 2) + "V)\n";
@@ -961,15 +1055,23 @@ String buildAlertMessage() {
   msg += "Device: " + String(config.deviceName) + "\n";
   msg += "IMMEDIATE ASSISTANCE NEEDED\n\n";
   
-  if (gpsFixed) {
-    msg += "Location:\n";
+  if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
+    msg += "Location";
+    if (locationFromLBS) {
+      msg += " (Cell Tower - approx):\n";
+      msg += "Accuracy: 100m-2km\n";
+    } else {
+      msg += " (GPS):\n";
+      msg += "Satellites: " + String(satellites) + "\n";
+    }
     msg += "Lat: " + String(latitude, 6) + "\n";
     msg += "Lon: " + String(longitude, 6) + "\n";
-    msg += "Alt: " + String(altitude, 1) + "m\n";
-    msg += "Satellites: " + String(satellites) + "\n\n";
-    msg += "Maps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
+    if (!locationFromLBS) {
+      msg += "Alt: " + String(altitude, 1) + "m\n";
+    }
+    msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
   } else {
-    msg += "GPS: Not available\n\n";
+    msg += "Location: Not available\n\n";
   }
   
   msg += "Battery: " + String(batteryPercent) + "% (" + String(batteryVoltage, 2) + "V)\n";

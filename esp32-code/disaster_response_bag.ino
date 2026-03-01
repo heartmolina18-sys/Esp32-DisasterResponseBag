@@ -685,12 +685,26 @@ void saveConfig() {
 void initDisplay() {
   Serial.println("[OLED] Initializing display...");
   
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
-    Serial.println("[OLED] ERROR: SSD1306 allocation failed!");
-    while (true);
+  // Initialize I2C with correct pins (SDA=21, SCL=22)
+  Wire.begin(21, 22);
+  delay(100);
+  
+  // Try primary address 0x3C first
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("[OLED] Address 0x3C failed, trying 0x3D...");
+    
+    // Try alternate address 0x3D
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
+      Serial.println("[OLED] ERROR: SSD1306 not found at 0x3C or 0x3D!");
+      while (true);
+    }
   }
   
+  // Clear any garbage on display
   display.clearDisplay();
+  display.display();
+  delay(100);
+  
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);

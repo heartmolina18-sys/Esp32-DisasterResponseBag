@@ -1,5 +1,36 @@
 # ESP32 Disaster Response Bag - Wiring Guide
 
+## New in v2.0: WiFi Configuration Portal
+
+You no longer need to edit code to change recipients! 
+
+### How to Enter Config Mode
+
+1. **Hold the button while powering on** the ESP32 (hold for 3 seconds)
+2. The OLED will display:
+   ```
+   CONFIG MODE
+   WiFi: DisasterBag-Setup
+   Password: disaster123
+   Go to: 192.168.4.1
+   ```
+3. Connect your phone/laptop to the "DisasterBag-Setup" WiFi network
+4. Open a browser and go to **192.168.4.1**
+5. Configure your recipients and save
+6. Restart the device to apply changes
+
+### What You Can Configure
+
+| Setting | Description |
+|---------|-------------|
+| Device Name | Custom name shown on OLED and in messages |
+| APN | Mobile carrier's Access Point Name |
+| Telegram Bot Token | Your bot token from @BotFather |
+| Telegram Recipients | Up to 5 Chat IDs |
+| SMS Recipients | Up to 3 phone numbers (backup) |
+
+---
+
 ## Component List
 
 | Component | Quantity | Description |
@@ -158,10 +189,7 @@ Install these libraries in Arduino IDE:
 
 1. Open Telegram and search for "@BotFather"
 2. Send `/newbot` and follow the prompts
-3. Copy the bot token and paste in code:
-   ```cpp
-   #define TELEGRAM_BOT_TOKEN "YOUR_BOT_TOKEN_HERE"
-   ```
+3. Copy the bot token (you'll enter this in the web interface)
 
 4. Start a chat with your bot
 5. Get your chat ID:
@@ -169,21 +197,15 @@ Install these libraries in Arduino IDE:
    - Visit: `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
    - Find your chat ID in the response
 
-6. Update the code:
-   ```cpp
-   #define TELEGRAM_CHAT_ID "YOUR_CHAT_ID_HERE"
-   ```
+6. **Enter Config Mode** (hold button on boot) and input your credentials via the web interface at 192.168.4.1
 
 ## SMS Fallback Setup
 
 The system automatically falls back to SMS if Telegram fails.
 
-1. Update the SMS recipient in the code:
-   ```cpp
-   #define SMS_RECIPIENT "+639XXXXXXXXX"  // Include country code
-   ```
-
-2. Ensure your SIM card has:
+1. **Enter Config Mode** and add SMS recipient numbers via the web interface
+2. Include country code (e.g., +639171234567)
+3. Ensure your SIM card has:
    - SMS sending capability enabled
    - Sufficient load/credits for SMS
 

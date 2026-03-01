@@ -8,30 +8,13 @@
  * - 128x64 OLED Display (SSD1306)
  * - Emergency Button
  * 
- * Wiring Connections:
- * 
- * Neo6M GPS:
- *   VCC  -> 3.3V
- *   GND  -> GND
- *   TX   -> GPIO 16 (RX2)
- *   RX   -> GPIO 17 (TX2)
- * 
- * Air780e 4G Module:
- *   VCC  -> 5V (requires 5V!)
- *   GND  -> GND
- *   TX   -> GPIO 26
- *   RX   -> GPIO 27
- *   PWR  -> GPIO 4 (for power control)
- * 
- * OLED Display (I2C):
- *   VCC  -> 3.3V
- *   GND  -> GND
- *   SDA  -> GPIO 21
- *   SCL  -> GPIO 22
- * 
- * Emergency Button:
- *   One side -> GPIO 33
- *   Other side -> GND
+ * Features:
+ * - WiFi Configuration Portal (connect to "DisasterBag-Setup" WiFi)
+ * - Multiple Telegram recipients (up to 5)
+ * - Multiple SMS recipients (up to 3)
+ * - EEPROM storage for persistent settings
+ * - Battery monitoring
+ * - Short press = SOS, Long press = I'm OK
  * 
  * Author: Thesis Project
  * Date: 2024
@@ -42,25 +25,26 @@
 #include <Adafruit_SSD1306.h>
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <EEPROM.h>
 
 // ==================== CONFIGURATION ====================
 
-// Telegram Configuration - REPLACE WITH YOUR VALUES
-#define TELEGRAM_BOT_TOKEN "YOUR_BOT_TOKEN_HERE"
-#define TELEGRAM_CHAT_ID   "YOUR_CHAT_ID_HERE"
+// WiFi Access Point Configuration
+#define AP_SSID "DisasterBag-Setup"
+#define AP_PASSWORD "disaster123"  // Min 8 characters
 
-// You can add multiple recipients (comma-separated chat IDs)
-const String RECIPIENTS[] = {
-  "CHAT_ID_1",
-  "CHAT_ID_2",
-  // Add more as needed
-};
-const int NUM_RECIPIENTS = 2;
+// Maximum recipients
+#define MAX_TELEGRAM_RECIPIENTS 5
+#define MAX_SMS_RECIPIENTS 3
 
-// APN Configuration - REPLACE WITH YOUR CARRIER'S APN
-#define APN_NAME     "internet"  // e.g., "internet" for Globe PH, "smart" for Smart PH
-#define APN_USER     ""          // Usually empty
-#define APN_PASS     ""          // Usually empty
+// EEPROM Configuration
+#define EEPROM_SIZE 1024
+#define EEPROM_MAGIC 0xDBAG  // Magic number to check if EEPROM is initialized
+
+// APN Configuration - Can be changed via web interface
+#define DEFAULT_APN "internet"
 
 // ==================== PIN DEFINITIONS ====================
 
@@ -88,14 +72,32 @@ const int NUM_RECIPIENTS = 2;
 // LED Indicator (built-in)
 #define LED_PIN        2
 
+// Config Mode Button (same button, hold on boot)
+#define CONFIG_HOLD_TIME 3000
+
 // Battery Monitoring (voltage divider)
-#define BATTERY_PIN    35    // ADC pin for battery voltage
-#define BATTERY_MAX    4.2   // Fully charged LiPo voltage
-#define BATTERY_MIN    3.3   // Minimum safe voltage
-#define VOLTAGE_DIVIDER_RATIO 2.0  // If using 100k/100k divider
+#define BATTERY_PIN    35
+#define BATTERY_MAX    4.2
+#define BATTERY_MIN    3.3
+#define VOLTAGE_DIVIDER_RATIO 2.0
 
 // Button timing for long press detection
-#define LONG_PRESS_TIME 2000  // 2 seconds for "I'm OK" message
+#define LONG_PRESS_TIME 2000
+
+// ==================== DATA STRUCTURES ====================
+
+struct Config {
+  uint16_t magic;
+  char telegramBotToken[50];
+  char telegramChatIds[MAX_TELEGRAM_RECIPIENTS][20];
+  int telegramCount;
+  char smsNumbers[MAX_SMS_RECIPIENTS][20];
+  int smsCount;
+  char apn[30];
+  char deviceName[20];
+};
+
+Config config;
 
 // ==================== OBJECTS ====================
 
@@ -108,6 +110,9 @@ HardwareSerial GPSSerial(2);
 
 // 4G LTE Module
 HardwareSerial LTESerial(1);
+
+// Web Server
+WebServer server(80);
 
 // ==================== GLOBAL VARIABLES ====================
 
@@ -133,6 +138,7 @@ int batteryPercent = 0;
 
 // System State
 enum SystemState {
+  STATE_CONFIG_MODE,
   STATE_INITIALIZING,
   STATE_WAITING_GPS,
   STATE_READY,
@@ -141,6 +147,9 @@ enum SystemState {
   STATE_ERROR
 };
 SystemState currentState = STATE_INITIALIZING;
+
+// Config mode flag
+bool configMode = false;
 
 // Alert tracking
 unsigned long alertSentTime = 0;
@@ -171,31 +180,57 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n========================================");
   Serial.println("ESP32 Disaster Response Bag");
-  Serial.println("Emergency Alert System v1.0");
+  Serial.println("Emergency Alert System v2.0");
   Serial.println("========================================\n");
 
   // Initialize LED
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  // Initialize Button with internal pull-up
+  // Initialize Button
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonPressISR, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonReleaseISR, RISING);
 
   // Initialize Battery Monitoring
   pinMode(BATTERY_PIN, INPUT);
-  analogReadResolution(12);  // 12-bit ADC resolution
-  analogSetAttenuation(ADC_11db);  // Full range 0-3.3V
+  analogReadResolution(12);
+  analogSetAttenuation(ADC_11db);
+
+  // Initialize EEPROM
+  EEPROM.begin(EEPROM_SIZE);
+  loadConfig();
 
   // Initialize OLED Display
   initDisplay();
+
+  // Check if button is held on boot for config mode
+  if (checkConfigMode()) {
+    startConfigMode();
+    return;
+  }
+
+  // Normal operation mode
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonPressISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonReleaseISR, RISING);
 
   // Initialize GPS Module
   initGPS();
 
   // Initialize 4G LTE Module
   initLTE();
+
+  // Check if recipients are configured
+  if (config.telegramCount == 0 && config.smsCount == 0) {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("NO RECIPIENTS!");
+    display.println();
+    display.println("Hold button on boot");
+    display.println("to enter setup mode");
+    display.println();
+    display.println("WiFi: DisasterBag-Setup");
+    display.display();
+    delay(5000);
+  }
 
   // System ready
   currentState = STATE_WAITING_GPS;
@@ -206,6 +241,12 @@ void setup() {
 // ==================== MAIN LOOP ====================
 
 void loop() {
+  if (configMode) {
+    server.handleClient();
+    updateConfigDisplay();
+    return;
+  }
+
   // Update GPS data
   updateGPS();
 
@@ -220,10 +261,8 @@ void loop() {
     unsigned long pressDuration = buttonReleaseTime - buttonPressTime;
     
     if (pressDuration >= LONG_PRESS_TIME) {
-      // Long press - "I'm OK" message
       handleImOkButton();
     } else {
-      // Short press - Emergency alert
       handleEmergencyButton();
     }
   }
@@ -234,8 +273,408 @@ void loop() {
   // Blink LED based on state
   updateLED();
 
-  // Small delay to prevent watchdog issues
   delay(10);
+}
+
+// ==================== CONFIG MODE FUNCTIONS ====================
+
+bool checkConfigMode() {
+  Serial.println("[CONFIG] Checking for config mode...");
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("Hold button for");
+  display.println("CONFIG MODE...");
+  display.display();
+
+  unsigned long startTime = millis();
+  while (digitalRead(BUTTON_PIN) == LOW) {
+    if (millis() - startTime >= CONFIG_HOLD_TIME) {
+      return true;
+    }
+    delay(100);
+  }
+  return false;
+}
+
+void startConfigMode() {
+  Serial.println("[CONFIG] Entering configuration mode...");
+  configMode = true;
+  currentState = STATE_CONFIG_MODE;
+
+  // Start WiFi Access Point
+  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  IPAddress IP = WiFi.softAPIP();
+  
+  Serial.print("[CONFIG] AP IP address: ");
+  Serial.println(IP);
+
+  // Setup web server routes
+  server.on("/", handleRoot);
+  server.on("/save", HTTP_POST, handleSave);
+  server.on("/status", handleStatus);
+  server.on("/reset", handleReset);
+  server.begin();
+
+  Serial.println("[CONFIG] Web server started!");
+  
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("CONFIG MODE");
+  display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
+  display.setCursor(0, 14);
+  display.println("WiFi Network:");
+  display.println(AP_SSID);
+  display.println();
+  display.println("Password:");
+  display.println(AP_PASSWORD);
+  display.println();
+  display.print("Go to: ");
+  display.println(IP);
+  display.display();
+}
+
+void updateConfigDisplay() {
+  static unsigned long lastUpdate = 0;
+  if (millis() - lastUpdate < 1000) return;
+  lastUpdate = millis();
+
+  // Blink LED to indicate config mode
+  static bool ledState = false;
+  ledState = !ledState;
+  digitalWrite(LED_PIN, ledState);
+}
+
+// ==================== WEB SERVER HANDLERS ====================
+
+void handleRoot() {
+  String html = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Disaster Response Bag Setup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a; 
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 500px; margin: 0 auto; }
+    h1 { 
+      text-align: center; 
+      margin-bottom: 8px;
+      color: #f8fafc;
+      font-size: 1.5rem;
+    }
+    .subtitle {
+      text-align: center;
+      color: #94a3b8;
+      margin-bottom: 24px;
+      font-size: 0.875rem;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      border: 1px solid #334155;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 16px;
+      background: #3b82f6;
+      border-radius: 2px;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.875rem;
+      color: #cbd5e1;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-size: 1rem;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+    input::placeholder { color: #64748b; }
+    .recipient-group {
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .recipient-group input {
+      margin-bottom: 0;
+    }
+    .help-text {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+    }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger {
+      background: #1e293b;
+      color: #f87171;
+      border: 1px solid #7f1d1d;
+      margin-top: 8px;
+    }
+    .btn-danger:hover { background: #7f1d1d; color: white; }
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      text-align: center;
+      font-size: 0.875rem;
+    }
+    .status-success { background: #14532d; color: #86efac; border: 1px solid #22c55e; }
+    .status-info { background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; }
+    .divider {
+      height: 1px;
+      background: #334155;
+      margin: 16px 0;
+    }
+    .current-config {
+      font-size: 0.75rem;
+      color: #64748b;
+      background: #0f172a;
+      padding: 8px;
+      border-radius: 4px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Disaster Response Bag</h1>
+    <p class="subtitle">Emergency Alert System Configuration</p>
+    
+    <div id="status"></div>
+    
+    <form action="/save" method="POST">
+      <div class="card">
+        <div class="card-title">Device Settings</div>
+        <label>Device Name</label>
+        <input type="text" name="deviceName" value=")rawliteral" + String(config.deviceName) + R"rawliteral(" placeholder="My Disaster Bag" maxlength="19">
+        
+        <label>APN (Mobile Data)</label>
+        <input type="text" name="apn" value=")rawliteral" + String(config.apn) + R"rawliteral(" placeholder="internet">
+        <p class="help-text">Common APNs: "internet" (Globe), "smart" (Smart), "sun.internet" (Sun)</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Telegram Configuration</div>
+        <label>Bot Token</label>
+        <input type="text" name="botToken" value=")rawliteral" + String(config.telegramBotToken) + R"rawliteral(" placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ">
+        <p class="help-text">Get this from @BotFather on Telegram</p>
+        
+        <div class="divider"></div>
+        
+        <label>Telegram Recipients (Chat IDs)</label>
+)rawliteral";
+
+  for (int i = 0; i < MAX_TELEGRAM_RECIPIENTS; i++) {
+    html += "<div class=\"recipient-group\">";
+    html += "<input type=\"text\" name=\"telegram" + String(i) + "\" value=\"" + String(config.telegramChatIds[i]) + "\" placeholder=\"Recipient " + String(i + 1) + " Chat ID\">";
+    html += "</div>";
+  }
+
+  html += R"rawliteral(
+        <p class="help-text">Get Chat ID from @userinfobot on Telegram</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">SMS Backup Recipients</div>
+        <p class="help-text" style="margin-bottom: 12px;">SMS is sent if Telegram fails. Include country code (e.g., +639171234567)</p>
+)rawliteral";
+
+  for (int i = 0; i < MAX_SMS_RECIPIENTS; i++) {
+    html += "<div class=\"recipient-group\">";
+    html += "<input type=\"tel\" name=\"sms" + String(i) + "\" value=\"" + String(config.smsNumbers[i]) + "\" placeholder=\"+639XXXXXXXXX\">";
+    html += "</div>";
+  }
+
+  html += R"rawliteral(
+      </div>
+
+      <button type="submit" class="btn btn-primary">Save Configuration</button>
+    </form>
+    
+    <button onclick="if(confirm('Reset all settings to default?')) window.location='/reset'" class="btn btn-danger">Reset to Default</button>
+    
+    <div class="card" style="margin-top: 16px;">
+      <div class="card-title">How to Use</div>
+      <p style="font-size: 0.875rem; line-height: 1.6;">
+        1. Create a Telegram bot via @BotFather<br>
+        2. Get your Chat ID from @userinfobot<br>
+        3. Enter your mobile carrier's APN<br>
+        4. Add SMS numbers as backup<br>
+        5. Save and restart the device
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('saved') === '1') {
+      document.getElementById('status').innerHTML = '<div class="status status-success">Configuration saved! Restart the device to apply changes.</div>';
+    }
+  </script>
+</body>
+</html>
+)rawliteral";
+
+  server.send(200, "text/html", html);
+}
+
+void handleSave() {
+  Serial.println("[CONFIG] Saving configuration...");
+
+  // Device settings
+  String deviceName = server.arg("deviceName");
+  String apn = server.arg("apn");
+  String botToken = server.arg("botToken");
+
+  // Copy to config
+  deviceName.toCharArray(config.deviceName, sizeof(config.deviceName));
+  apn.toCharArray(config.apn, sizeof(config.apn));
+  botToken.toCharArray(config.telegramBotToken, sizeof(config.telegramBotToken));
+
+  // Telegram recipients
+  config.telegramCount = 0;
+  for (int i = 0; i < MAX_TELEGRAM_RECIPIENTS; i++) {
+    String chatId = server.arg("telegram" + String(i));
+    chatId.trim();
+    if (chatId.length() > 0) {
+      chatId.toCharArray(config.telegramChatIds[config.telegramCount], 20);
+      config.telegramCount++;
+    }
+  }
+
+  // SMS recipients
+  config.smsCount = 0;
+  for (int i = 0; i < MAX_SMS_RECIPIENTS; i++) {
+    String number = server.arg("sms" + String(i));
+    number.trim();
+    if (number.length() > 0) {
+      number.toCharArray(config.smsNumbers[config.smsCount], 20);
+      config.smsCount++;
+    }
+  }
+
+  // Save to EEPROM
+  saveConfig();
+
+  Serial.println("[CONFIG] Configuration saved!");
+  Serial.print("[CONFIG] Telegram recipients: ");
+  Serial.println(config.telegramCount);
+  Serial.print("[CONFIG] SMS recipients: ");
+  Serial.println(config.smsCount);
+
+  server.sendHeader("Location", "/?saved=1");
+  server.send(302, "text/plain", "Saved");
+}
+
+void handleStatus() {
+  String json = "{";
+  json += "\"gps_fixed\":" + String(gpsFixed ? "true" : "false") + ",";
+  json += "\"latitude\":" + String(latitude, 6) + ",";
+  json += "\"longitude\":" + String(longitude, 6) + ",";
+  json += "\"battery\":" + String(batteryPercent) + ",";
+  json += "\"telegram_count\":" + String(config.telegramCount) + ",";
+  json += "\"sms_count\":" + String(config.smsCount);
+  json += "}";
+  server.send(200, "application/json", json);
+}
+
+void handleReset() {
+  Serial.println("[CONFIG] Resetting to defaults...");
+  
+  config.magic = EEPROM_MAGIC;
+  memset(config.telegramBotToken, 0, sizeof(config.telegramBotToken));
+  memset(config.telegramChatIds, 0, sizeof(config.telegramChatIds));
+  config.telegramCount = 0;
+  memset(config.smsNumbers, 0, sizeof(config.smsNumbers));
+  config.smsCount = 0;
+  strcpy(config.apn, DEFAULT_APN);
+  strcpy(config.deviceName, "DisasterBag");
+  
+  saveConfig();
+  
+  server.sendHeader("Location", "/?saved=1");
+  server.send(302, "text/plain", "Reset");
+}
+
+// ==================== EEPROM FUNCTIONS ====================
+
+void loadConfig() {
+  Serial.println("[EEPROM] Loading configuration...");
+  
+  EEPROM.get(0, config);
+  
+  if (config.magic != EEPROM_MAGIC) {
+    Serial.println("[EEPROM] No valid config found, using defaults");
+    config.magic = EEPROM_MAGIC;
+    memset(config.telegramBotToken, 0, sizeof(config.telegramBotToken));
+    memset(config.telegramChatIds, 0, sizeof(config.telegramChatIds));
+    config.telegramCount = 0;
+    memset(config.smsNumbers, 0, sizeof(config.smsNumbers));
+    config.smsCount = 0;
+    strcpy(config.apn, DEFAULT_APN);
+    strcpy(config.deviceName, "DisasterBag");
+    saveConfig();
+  } else {
+    Serial.println("[EEPROM] Configuration loaded!");
+    Serial.print("[EEPROM] Device: ");
+    Serial.println(config.deviceName);
+    Serial.print("[EEPROM] Telegram recipients: ");
+    Serial.println(config.telegramCount);
+    Serial.print("[EEPROM] SMS recipients: ");
+    Serial.println(config.smsCount);
+  }
+}
+
+void saveConfig() {
+  EEPROM.put(0, config);
+  EEPROM.commit();
+  Serial.println("[EEPROM] Configuration saved!");
 }
 
 // ==================== INITIALIZATION FUNCTIONS ====================
@@ -245,20 +684,20 @@ void initDisplay() {
   
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
     Serial.println("[OLED] ERROR: SSD1306 allocation failed!");
-    while (true); // Halt
+    while (true);
   }
   
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
-  display.println("Disaster Response");
-  display.println("Bag v1.0");
+  display.println(config.deviceName);
+  display.println("v2.0");
   display.println();
   display.println("Initializing...");
   display.display();
   
-  Serial.println("[OLED] Display initialized successfully!");
+  Serial.println("[OLED] Display initialized!");
   delay(1000);
 }
 
@@ -273,7 +712,6 @@ void initGPS() {
   display.display();
   
   Serial.println("[GPS] GPS module initialized!");
-  Serial.println("[GPS] Waiting for satellite fix...");
   delay(500);
 }
 
@@ -285,24 +723,19 @@ void initLTE() {
   display.println("Initializing 4G...");
   display.display();
 
-  // Power control pin
   pinMode(LTE_PWR_PIN, OUTPUT);
   
-  // Power cycle the module
   Serial.println("[LTE] Power cycling module...");
   digitalWrite(LTE_PWR_PIN, LOW);
   delay(1000);
   digitalWrite(LTE_PWR_PIN, HIGH);
   delay(3000);
 
-  // Initialize serial
   LTESerial.begin(LTE_BAUD, SERIAL_8N1, LTE_RX_PIN, LTE_TX_PIN);
   delay(2000);
 
-  // Send AT commands to initialize
   Serial.println("[LTE] Sending initialization commands...");
   
-  // Test AT
   if (!sendATCommand("AT", "OK", 2000)) {
     Serial.println("[LTE] WARNING: Module not responding");
     display.println("4G: No Response");
@@ -311,20 +744,16 @@ void initLTE() {
     return;
   }
   
-  // Disable echo
   sendATCommand("ATE0", "OK", 1000);
   
-  // Check SIM card
   if (sendATCommand("AT+CPIN?", "READY", 5000)) {
     Serial.println("[LTE] SIM card detected!");
   } else {
     Serial.println("[LTE] WARNING: SIM card not detected!");
   }
   
-  // Set full functionality
   sendATCommand("AT+CFUN=1", "OK", 5000);
   
-  // Check network registration
   Serial.println("[LTE] Waiting for network registration...");
   for (int i = 0; i < 30; i++) {
     if (sendATCommand("AT+CREG?", "+CREG: 0,1", 1000) || 
@@ -335,14 +764,10 @@ void initLTE() {
     delay(1000);
   }
   
-  // Configure APN
-  String apnCmd = "AT+CGDCONT=1,\"IP\",\"" + String(APN_NAME) + "\"";
+  String apnCmd = "AT+CGDCONT=1,\"IP\",\"" + String(config.apn) + "\"";
   sendATCommand(apnCmd.c_str(), "OK", 2000);
   
-  // Activate PDP context
   sendATCommand("AT+CGACT=1,1", "OK", 5000);
-  
-  // Check signal quality
   sendATCommand("AT+CSQ", "OK", 1000);
   
   Serial.println("[LTE] 4G module initialized!");
@@ -357,31 +782,15 @@ void initLTE() {
 void updateBattery() {
   static unsigned long lastBatteryUpdate = 0;
   
-  // Update every 5 seconds
   if (millis() - lastBatteryUpdate < 5000) return;
   lastBatteryUpdate = millis();
   
-  // Read ADC value (12-bit: 0-4095)
   int adcValue = analogRead(BATTERY_PIN);
-  
-  // Convert to voltage (assuming 3.3V reference)
   float measuredVoltage = (adcValue / 4095.0) * 3.3;
-  
-  // Apply voltage divider ratio to get actual battery voltage
   batteryVoltage = measuredVoltage * VOLTAGE_DIVIDER_RATIO;
   
-  // Calculate percentage
   batteryPercent = map(batteryVoltage * 100, BATTERY_MIN * 100, BATTERY_MAX * 100, 0, 100);
   batteryPercent = constrain(batteryPercent, 0, 100);
-  
-  // Debug output
-  if (batteryVoltage > 0.5) {  // Only log if battery is connected
-    Serial.print("[BATTERY] Voltage: ");
-    Serial.print(batteryVoltage, 2);
-    Serial.print("V (");
-    Serial.print(batteryPercent);
-    Serial.println("%)");
-  }
 }
 
 void updateGPS() {
@@ -425,14 +834,11 @@ void updateGPS() {
 // ==================== EMERGENCY ALERT FUNCTIONS ====================
 
 void handleImOkButton() {
-  Serial.println("\n[STATUS] ========================================");
-  Serial.println("[STATUS] I'M OK - Long press detected");
-  Serial.println("[STATUS] ========================================\n");
+  Serial.println("\n[STATUS] I'M OK - Long press detected\n");
   
   currentState = STATE_SENDING_ALERT;
   digitalWrite(LED_PIN, HIGH);
   
-  // Display sending status
   display.clearDisplay();
   display.setTextSize(2);
   display.setCursor(10, 10);
@@ -441,17 +847,8 @@ void handleImOkButton() {
   display.setTextSize(1);
   display.display();
   
-  // Build status message
   String message = buildStatusMessage();
-  
-  // Try sending via Telegram first
-  bool success = sendTelegramAlert(TELEGRAM_CHAT_ID, message);
-  
-  // If Telegram fails, try SMS fallback
-  if (!success) {
-    Serial.println("[STATUS] Telegram failed, trying SMS fallback...");
-    success = sendSMSAlert(message);
-  }
+  bool success = sendToAllRecipients(message);
   
   if (success) {
     Serial.println("[STATUS] Status sent successfully!");
@@ -482,16 +879,11 @@ void handleImOkButton() {
 }
 
 void handleEmergencyButton() {
-  Serial.println("\n[ALERT] ========================================");
-  Serial.println("[ALERT] EMERGENCY BUTTON PRESSED!");
-  Serial.println("[ALERT] ========================================\n");
+  Serial.println("\n[ALERT] EMERGENCY BUTTON PRESSED!\n");
   
   currentState = STATE_SENDING_ALERT;
-  
-  // Visual feedback
   digitalWrite(LED_PIN, HIGH);
   
-  // Display sending status
   display.clearDisplay();
   display.setTextSize(2);
   display.setCursor(10, 10);
@@ -500,39 +892,13 @@ void handleEmergencyButton() {
   display.setTextSize(1);
   display.display();
   
-  // Build alert message
   String message = buildAlertMessage();
+  bool success = sendToAllRecipients(message);
   
-  // Send to all recipients
-  bool success = false;
-  
-  // Try sending via Telegram first
-  if (sendTelegramAlert(TELEGRAM_CHAT_ID, message)) {
-    success = true;
-    alertCount++;
-    alertSentTime = millis();
-  }
-  
-  // If Telegram fails, try SMS fallback
-  if (!success) {
-    Serial.println("[ALERT] Telegram failed, trying SMS fallback...");
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 20);
-    display.println("Telegram failed!");
-    display.println("Trying SMS...");
-    display.display();
-    
-    if (sendSMSAlert(message)) {
-      success = true;
-      alertCount++;
-      alertSentTime = millis();
-    }
-  }
-  
-  // Update state based on result
   if (success) {
     currentState = STATE_ALERT_SENT;
+    alertCount++;
+    alertSentTime = millis();
     Serial.println("[ALERT] Alert sent successfully!");
     
     display.clearDisplay();
@@ -556,96 +922,102 @@ void handleEmergencyButton() {
     delay(2000);
   }
   
-  // Return to ready state
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
   digitalWrite(LED_PIN, LOW);
 }
 
-String buildStatusMessage() {
-  String msg = "✅ *I'M OK - Status Update* ✅\n\n";
-  msg += "━━━━━━━━━━━━━━━━━━━━\n";
-  msg += "📍 *Current Location*\n";
-  msg += "━━━━━━━━━━━━━━━━━━━━\n\n";
+bool sendToAllRecipients(String message) {
+  bool anySuccess = false;
   
-  if (gpsFixed) {
-    msg += "Latitude: " + String(latitude, 6) + "\n";
-    msg += "Longitude: " + String(longitude, 6) + "\n";
-    msg += "Altitude: " + String(altitude, 1) + " m\n\n";
+  // Send to all Telegram recipients
+  for (int i = 0; i < config.telegramCount; i++) {
+    Serial.print("[SEND] Sending to Telegram: ");
+    Serial.println(config.telegramChatIds[i]);
     
-    msg += "🗺️ *Google Maps:*\n";
-    msg += "https://www.google.com/maps?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
-  } else {
-    msg += "⚠️ GPS not available\n\n";
+    if (sendTelegramAlert(String(config.telegramChatIds[i]), message)) {
+      anySuccess = true;
+    }
+    delay(500); // Small delay between sends
   }
   
-  // Battery status
-  msg += "━━━━━━━━━━━━━━━━━━━━\n";
-  msg += "🔋 *Battery Status*\n";
-  msg += "━━━━━━━━━━━━━━━━━━━━\n";
-  msg += "Voltage: " + String(batteryVoltage, 2) + "V\n";
-  msg += "Level: " + String(batteryPercent) + "%\n\n";
+  // If no Telegram success, try SMS fallback
+  if (!anySuccess && config.smsCount > 0) {
+    Serial.println("[SEND] Telegram failed, trying SMS fallback...");
+    
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 20);
+    display.println("Trying SMS...");
+    display.display();
+    
+    for (int i = 0; i < config.smsCount; i++) {
+      Serial.print("[SEND] Sending SMS to: ");
+      Serial.println(config.smsNumbers[i]);
+      
+      if (sendSMSAlert(String(config.smsNumbers[i]), message)) {
+        anySuccess = true;
+      }
+      delay(1000);
+    }
+  }
   
-  msg += "📅 Time: " + gpsTime + "\n";
-  msg += "📆 Date: " + gpsDate + "\n\n";
-  msg += "_User is safe and checking in._";
+  return anySuccess;
+}
+
+String buildStatusMessage() {
+  String msg = "STATUS UPDATE\n\n";
+  msg += "Device: " + String(config.deviceName) + "\n";
+  msg += "Status: I'm OK\n\n";
+  
+  if (gpsFixed) {
+    msg += "Location:\n";
+    msg += "Lat: " + String(latitude, 6) + "\n";
+    msg += "Lon: " + String(longitude, 6) + "\n";
+    msg += "Alt: " + String(altitude, 1) + "m\n\n";
+    msg += "Maps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
+  } else {
+    msg += "GPS: Not available\n\n";
+  }
+  
+  msg += "Battery: " + String(batteryPercent) + "% (" + String(batteryVoltage, 2) + "V)\n";
+  msg += "Time: " + gpsTime + "\n";
+  msg += "Date: " + gpsDate;
   
   return msg;
 }
 
 String buildAlertMessage() {
-  String msg = "🚨 *EMERGENCY ALERT* 🚨\n\n";
-  msg += "━━━━━━━━━━━━━━━━━━━━\n";
-  msg += "📍 *Location Details*\n";
-  msg += "━━━━━━━━━━━━━━━━━━━━\n\n";
+  String msg = "EMERGENCY ALERT\n\n";
+  msg += "Device: " + String(config.deviceName) + "\n";
+  msg += "IMMEDIATE ASSISTANCE NEEDED\n\n";
   
   if (gpsFixed) {
-    msg += "Latitude: " + String(latitude, 6) + "\n";
-    msg += "Longitude: " + String(longitude, 6) + "\n";
-    msg += "Altitude: " + String(altitude, 1) + " m\n";
+    msg += "Location:\n";
+    msg += "Lat: " + String(latitude, 6) + "\n";
+    msg += "Lon: " + String(longitude, 6) + "\n";
+    msg += "Alt: " + String(altitude, 1) + "m\n";
     msg += "Satellites: " + String(satellites) + "\n\n";
-    
-    // Google Maps link
-    msg += "🗺️ *Google Maps:*\n";
-    msg += "https://www.google.com/maps?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
+    msg += "Maps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
   } else {
-    msg += "⚠️ GPS not available\n";
-    msg += "Location unknown\n\n";
+    msg += "GPS: Not available\n\n";
   }
   
-  msg += "━━━━━━━━━━━━━━━━━━━━\n";
-  msg += "🔋 *Battery Status*\n";
-  msg += "━━━━━━━━━━━━━━━━━━━━\n";
-  msg += "Voltage: " + String(batteryVoltage, 2) + "V\n";
-  msg += "Level: " + String(batteryPercent) + "%\n\n";
-  
-  msg += "━━━━━━━━━━━━━━━━━━━━\n";
-  msg += "📅 Time: " + gpsTime + "\n";
-  msg += "📆 Date: " + gpsDate + "\n";
-  msg += "━━━━━━━━━━━━━━━━━━━━\n\n";
-  msg += "⚡ Alert #" + String(alertCount + 1) + "\n";
-  msg += "_Sent from Disaster Response Bag_";
-  
-  Serial.println("[ALERT] Message built:");
-  Serial.println(msg);
+  msg += "Battery: " + String(batteryPercent) + "% (" + String(batteryVoltage, 2) + "V)\n";
+  msg += "Time: " + gpsTime + "\n";
+  msg += "Date: " + gpsDate + "\n";
+  msg += "Alert #" + String(alertCount + 1);
   
   return msg;
 }
 
 bool sendTelegramAlert(String chatId, String message) {
-  Serial.println("[TELEGRAM] Preparing to send message...");
+  Serial.println("[TELEGRAM] Sending to: " + chatId);
   
-  // URL encode the message
   String encodedMsg = urlEncode(message);
+  String url = "/bot" + String(config.telegramBotToken) + "/sendMessage";
+  String postData = "chat_id=" + chatId + "&text=" + encodedMsg;
   
-  // Build HTTP request
-  String url = "/bot" + String(TELEGRAM_BOT_TOKEN) + "/sendMessage";
-  String postData = "chat_id=" + chatId + "&text=" + encodedMsg + "&parse_mode=Markdown";
-  
-  // Initialize HTTP connection
-  Serial.println("[TELEGRAM] Connecting to api.telegram.org...");
-  
-  // Configure HTTP
-  sendATCommand("AT+HTTPTERM", "OK", 1000); // Terminate any existing session
+  sendATCommand("AT+HTTPTERM", "OK", 1000);
   delay(500);
   
   if (!sendATCommand("AT+HTTPINIT", "OK", 2000)) {
@@ -653,89 +1025,56 @@ bool sendTelegramAlert(String chatId, String message) {
     return false;
   }
   
-  // Set parameters
   sendATCommand("AT+HTTPPARA=\"CID\",1", "OK", 1000);
   
   String urlCmd = "AT+HTTPPARA=\"URL\",\"https://api.telegram.org" + url + "\"";
   if (!sendATCommand(urlCmd.c_str(), "OK", 2000)) {
-    Serial.println("[TELEGRAM] URL set failed");
     sendATCommand("AT+HTTPTERM", "OK", 1000);
     return false;
   }
   
-  // Set content type
   sendATCommand("AT+HTTPPARA=\"CONTENT\",\"application/x-www-form-urlencoded\"", "OK", 1000);
   
-  // Set POST data
   String dataCmd = "AT+HTTPDATA=" + String(postData.length()) + ",10000";
   if (sendATCommand(dataCmd.c_str(), "DOWNLOAD", 2000)) {
     LTESerial.print(postData);
     delay(1000);
   }
   
-  // Execute POST request
-  Serial.println("[TELEGRAM] Sending POST request...");
   if (!sendATCommand("AT+HTTPACTION=1", "OK", 5000)) {
-    Serial.println("[TELEGRAM] HTTP action failed");
     sendATCommand("AT+HTTPTERM", "OK", 1000);
     return false;
   }
   
-  // Wait for response
   delay(5000);
-  
-  // Read response
   sendATCommand("AT+HTTPREAD", "OK", 5000);
-  
-  // Terminate HTTP
   sendATCommand("AT+HTTPTERM", "OK", 1000);
   
   Serial.println("[TELEGRAM] Message sent!");
   return true;
 }
 
-// SMS recipient phone number (with country code, e.g., "+639123456789")
-#define SMS_RECIPIENT "+639XXXXXXXXX"
-
-bool sendSMSAlert(String message) {
-  Serial.println("[SMS] Preparing to send SMS...");
+bool sendSMSAlert(String phoneNumber, String message) {
+  Serial.println("[SMS] Sending to: " + phoneNumber);
   
-  // Strip markdown formatting for SMS (plain text)
+  // Strip special characters for SMS
   String smsMessage = message;
-  smsMessage.replace("*", "");
-  smsMessage.replace("_", "");
-  smsMessage.replace("━", "-");
-  smsMessage.replace("🚨", "[ALERT]");
-  smsMessage.replace("✅", "[OK]");
-  smsMessage.replace("📍", "");
-  smsMessage.replace("🗺️", "Map:");
-  smsMessage.replace("📅", "Time:");
-  smsMessage.replace("📆", "Date:");
-  smsMessage.replace("🔋", "Battery:");
-  smsMessage.replace("⚡", "#");
-  smsMessage.replace("⚠️", "!");
+  smsMessage.replace("https://", "");
   
-  // Truncate if too long for SMS (160 chars for single SMS)
-  // But Air780e supports concatenated SMS, so we allow longer
-  if (smsMessage.length() > 500) {
-    smsMessage = smsMessage.substring(0, 497) + "...";
+  if (smsMessage.length() > 450) {
+    smsMessage = smsMessage.substring(0, 447) + "...";
   }
   
-  // Set SMS format to text mode
   if (!sendATCommand("AT+CMGF=1", "OK", 2000)) {
-    Serial.println("[SMS] Failed to set text mode");
     return false;
   }
   
-  // Set character set
   sendATCommand("AT+CSCS=\"GSM\"", "OK", 1000);
   
-  // Send SMS command with recipient number
-  String smsCmd = "AT+CMGS=\"" + String(SMS_RECIPIENT) + "\"";
+  String smsCmd = "AT+CMGS=\"" + phoneNumber + "\"";
   LTESerial.println(smsCmd);
   delay(500);
   
-  // Wait for '>' prompt
   unsigned long startTime = millis();
   bool promptReceived = false;
   while (millis() - startTime < 5000) {
@@ -750,45 +1089,34 @@ bool sendSMSAlert(String message) {
   }
   
   if (!promptReceived) {
-    Serial.println("[SMS] No prompt received");
-    sendATCommand("\x1B", "OK", 1000);  // Send ESC to cancel
+    sendATCommand("\x1B", "OK", 1000);
     return false;
   }
   
-  // Send message content
   LTESerial.print(smsMessage);
   delay(100);
-  
-  // Send Ctrl+Z to finish
   LTESerial.write(0x1A);
   
-  // Wait for confirmation
   startTime = millis();
   String response = "";
-  while (millis() - startTime < 30000) {  // SMS can take up to 30 seconds
+  while (millis() - startTime < 30000) {
     while (LTESerial.available()) {
-      char c = LTESerial.read();
-      response += c;
+      response += (char)LTESerial.read();
     }
     
     if (response.indexOf("+CMGS:") != -1) {
-      Serial.println("[SMS] SMS sent successfully!");
-      Serial.print("[SMS] Response: ");
-      Serial.println(response);
+      Serial.println("[SMS] SMS sent!");
       return true;
     }
     
     if (response.indexOf("ERROR") != -1) {
-      Serial.println("[SMS] SMS sending failed");
-      Serial.print("[SMS] Error: ");
-      Serial.println(response);
+      Serial.println("[SMS] Failed");
       return false;
     }
     
     delay(100);
   }
   
-  Serial.println("[SMS] SMS sending timeout");
   return false;
 }
 
@@ -804,24 +1132,19 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
-  // Header with battery indicator
+  // Header with battery
   display.setCursor(0, 0);
-  display.print("DRB ");
+  display.print(config.deviceName);
   
-  // Battery indicator
   if (batteryVoltage > 0.5) {
-    display.print("BAT:");
+    display.setCursor(90, 0);
     display.print(batteryPercent);
     display.print("%");
     
-    // Battery icon
-    display.setCursor(100, 0);
-    display.drawRect(100, 0, 20, 8, SSD1306_WHITE);
-    display.fillRect(120, 2, 2, 4, SSD1306_WHITE);
-    int fillWidth = map(batteryPercent, 0, 100, 0, 18);
-    display.fillRect(101, 1, fillWidth, 6, SSD1306_WHITE);
-  } else {
-    display.print("NO BATTERY");
+    display.drawRect(115, 0, 12, 8, SSD1306_WHITE);
+    display.fillRect(127, 2, 1, 4, SSD1306_WHITE);
+    int fillWidth = map(batteryPercent, 0, 100, 0, 10);
+    display.fillRect(116, 1, fillWidth, 6, SSD1306_WHITE);
   }
   
   display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
@@ -842,7 +1165,6 @@ void updateDisplay() {
     display.print("Satellites: ");
     display.println(satellites);
     
-    // Animated dots
     static int dots = 0;
     display.setCursor(0, 34);
     for (int i = 0; i < (dots % 4); i++) {
@@ -851,7 +1173,7 @@ void updateDisplay() {
     dots++;
   }
   
-  // Status bar at bottom
+  // Status bar
   display.drawLine(0, 48, 128, 48, SSD1306_WHITE);
   display.setCursor(0, 52);
   
@@ -875,7 +1197,7 @@ void updateDisplay() {
       display.print("Initializing...");
   }
   
-  // Alert count
+  // Alert count and recipient count
   display.setCursor(100, 52);
   display.print("#");
   display.print(alertCount);
@@ -891,13 +1213,13 @@ void updateLED() {
   
   switch (currentState) {
     case STATE_WAITING_GPS:
-      blinkInterval = 1000; // Slow blink
+      blinkInterval = 1000;
       break;
     case STATE_READY:
-      blinkInterval = 2000; // Very slow blink
+      blinkInterval = 2000;
       break;
     case STATE_SENDING_ALERT:
-      blinkInterval = 100; // Fast blink
+      blinkInterval = 100;
       break;
     default:
       blinkInterval = 500;
@@ -913,37 +1235,29 @@ void updateLED() {
 // ==================== UTILITY FUNCTIONS ====================
 
 bool sendATCommand(const char* command, const char* expectedResponse, unsigned long timeout) {
-  Serial.print("[AT] Sending: ");
+  Serial.print("[AT] ");
   Serial.println(command);
   
-  // Clear buffer
   while (LTESerial.available()) {
     LTESerial.read();
   }
   
-  // Send command
   LTESerial.println(command);
   
-  // Wait for response
   unsigned long startTime = millis();
   String response = "";
   
   while (millis() - startTime < timeout) {
     while (LTESerial.available()) {
-      char c = LTESerial.read();
-      response += c;
+      response += (char)LTESerial.read();
     }
     
     if (response.indexOf(expectedResponse) != -1) {
-      Serial.print("[AT] Response: ");
-      Serial.println(response);
       return true;
     }
     delay(10);
   }
   
-  Serial.print("[AT] Timeout. Response was: ");
-  Serial.println(response);
   return false;
 }
 
@@ -953,7 +1267,7 @@ String urlEncode(String str) {
   char code0;
   char code1;
   
-  for (int i = 0; i < str.length(); i++) {
+  for (unsigned int i = 0; i < str.length(); i++) {
     c = str.charAt(i);
     
     if (c == ' ') {

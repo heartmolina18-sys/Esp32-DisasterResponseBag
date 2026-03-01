@@ -88,6 +88,15 @@ const int NUM_RECIPIENTS = 2;
 // LED Indicator (built-in)
 #define LED_PIN        2
 
+// Battery Monitoring (voltage divider)
+#define BATTERY_PIN    35    // ADC pin for battery voltage
+#define BATTERY_MAX    4.2   // Fully charged LiPo voltage
+#define BATTERY_MIN    3.3   // Minimum safe voltage
+#define VOLTAGE_DIVIDER_RATIO 2.0  // If using 100k/100k divider
+
+// Button timing for long press detection
+#define LONG_PRESS_TIME 2000  // 2 seconds for "I'm OK" message
+
 // ==================== OBJECTS ====================
 
 // Display
@@ -113,7 +122,14 @@ String gpsDate = "--/--/----";
 
 // Button State
 volatile bool buttonPressed = false;
+volatile unsigned long buttonPressTime = 0;
+volatile unsigned long buttonReleaseTime = 0;
+volatile bool buttonReleased = false;
 unsigned long lastDebounceTime = 0;
+
+// Battery Monitoring
+float batteryVoltage = 0.0;
+int batteryPercent = 0;
 
 // System State
 enum SystemState {
@@ -132,9 +148,18 @@ int alertCount = 0;
 
 // ==================== INTERRUPT SERVICE ROUTINE ====================
 
-void IRAM_ATTR buttonISR() {
+void IRAM_ATTR buttonPressISR() {
   if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
+    buttonPressTime = millis();
     buttonPressed = true;
+    lastDebounceTime = millis();
+  }
+}
+
+void IRAM_ATTR buttonReleaseISR() {
+  if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
+    buttonReleaseTime = millis();
+    buttonReleased = true;
     lastDebounceTime = millis();
   }
 }
@@ -155,7 +180,13 @@ void setup() {
 
   // Initialize Button with internal pull-up
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonPressISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonReleaseISR, RISING);
+
+  // Initialize Battery Monitoring
+  pinMode(BATTERY_PIN, INPUT);
+  analogReadResolution(12);  // 12-bit ADC resolution
+  analogSetAttenuation(ADC_11db);  // Full range 0-3.3V
 
   // Initialize OLED Display
   initDisplay();
@@ -178,10 +209,23 @@ void loop() {
   // Update GPS data
   updateGPS();
 
-  // Handle button press
-  if (buttonPressed) {
+  // Update battery level
+  updateBattery();
+
+  // Handle button press/release for long press detection
+  if (buttonReleased && buttonPressed) {
+    buttonReleased = false;
     buttonPressed = false;
-    handleEmergencyButton();
+    
+    unsigned long pressDuration = buttonReleaseTime - buttonPressTime;
+    
+    if (pressDuration >= LONG_PRESS_TIME) {
+      // Long press - "I'm OK" message
+      handleImOkButton();
+    } else {
+      // Short press - Emergency alert
+      handleEmergencyButton();
+    }
   }
 
   // Update display
@@ -310,6 +354,36 @@ void initLTE() {
 
 // ==================== GPS FUNCTIONS ====================
 
+void updateBattery() {
+  static unsigned long lastBatteryUpdate = 0;
+  
+  // Update every 5 seconds
+  if (millis() - lastBatteryUpdate < 5000) return;
+  lastBatteryUpdate = millis();
+  
+  // Read ADC value (12-bit: 0-4095)
+  int adcValue = analogRead(BATTERY_PIN);
+  
+  // Convert to voltage (assuming 3.3V reference)
+  float measuredVoltage = (adcValue / 4095.0) * 3.3;
+  
+  // Apply voltage divider ratio to get actual battery voltage
+  batteryVoltage = measuredVoltage * VOLTAGE_DIVIDER_RATIO;
+  
+  // Calculate percentage
+  batteryPercent = map(batteryVoltage * 100, BATTERY_MIN * 100, BATTERY_MAX * 100, 0, 100);
+  batteryPercent = constrain(batteryPercent, 0, 100);
+  
+  // Debug output
+  if (batteryVoltage > 0.5) {  // Only log if battery is connected
+    Serial.print("[BATTERY] Voltage: ");
+    Serial.print(batteryVoltage, 2);
+    Serial.print("V (");
+    Serial.print(batteryPercent);
+    Serial.println("%)");
+  }
+}
+
 void updateGPS() {
   while (GPSSerial.available() > 0) {
     char c = GPSSerial.read();
@@ -350,6 +424,63 @@ void updateGPS() {
 
 // ==================== EMERGENCY ALERT FUNCTIONS ====================
 
+void handleImOkButton() {
+  Serial.println("\n[STATUS] ========================================");
+  Serial.println("[STATUS] I'M OK - Long press detected");
+  Serial.println("[STATUS] ========================================\n");
+  
+  currentState = STATE_SENDING_ALERT;
+  digitalWrite(LED_PIN, HIGH);
+  
+  // Display sending status
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setCursor(10, 10);
+  display.println("SENDING");
+  display.println(" STATUS");
+  display.setTextSize(1);
+  display.display();
+  
+  // Build status message
+  String message = buildStatusMessage();
+  
+  // Try sending via Telegram first
+  bool success = sendTelegramAlert(TELEGRAM_CHAT_ID, message);
+  
+  // If Telegram fails, try SMS fallback
+  if (!success) {
+    Serial.println("[STATUS] Telegram failed, trying SMS fallback...");
+    success = sendSMSAlert(message);
+  }
+  
+  if (success) {
+    Serial.println("[STATUS] Status sent successfully!");
+    
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(10, 15);
+    display.println("STATUS");
+    display.println(" SENT!");
+    display.setTextSize(1);
+    display.display();
+    delay(2000);
+  } else {
+    currentState = STATE_ERROR;
+    Serial.println("[STATUS] Failed to send status!");
+    
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 20);
+    display.println("STATUS FAILED!");
+    display.println("Check connection");
+    display.display();
+    delay(2000);
+  }
+  
+  currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
+  digitalWrite(LED_PIN, LOW);
+}
+
 void handleEmergencyButton() {
   Serial.println("\n[ALERT] ========================================");
   Serial.println("[ALERT] EMERGENCY BUTTON PRESSED!");
@@ -375,11 +506,28 @@ void handleEmergencyButton() {
   // Send to all recipients
   bool success = false;
   
-  // Try sending via Telegram
+  // Try sending via Telegram first
   if (sendTelegramAlert(TELEGRAM_CHAT_ID, message)) {
     success = true;
     alertCount++;
     alertSentTime = millis();
+  }
+  
+  // If Telegram fails, try SMS fallback
+  if (!success) {
+    Serial.println("[ALERT] Telegram failed, trying SMS fallback...");
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 20);
+    display.println("Telegram failed!");
+    display.println("Trying SMS...");
+    display.display();
+    
+    if (sendSMSAlert(message)) {
+      success = true;
+      alertCount++;
+      alertSentTime = millis();
+    }
   }
   
   // Update state based on result
@@ -413,6 +561,37 @@ void handleEmergencyButton() {
   digitalWrite(LED_PIN, LOW);
 }
 
+String buildStatusMessage() {
+  String msg = "✅ *I'M OK - Status Update* ✅\n\n";
+  msg += "━━━━━━━━━━━━━━━━━━━━\n";
+  msg += "📍 *Current Location*\n";
+  msg += "━━━━━━━━━━━━━━━━━━━━\n\n";
+  
+  if (gpsFixed) {
+    msg += "Latitude: " + String(latitude, 6) + "\n";
+    msg += "Longitude: " + String(longitude, 6) + "\n";
+    msg += "Altitude: " + String(altitude, 1) + " m\n\n";
+    
+    msg += "🗺️ *Google Maps:*\n";
+    msg += "https://www.google.com/maps?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
+  } else {
+    msg += "⚠️ GPS not available\n\n";
+  }
+  
+  // Battery status
+  msg += "━━━━━━━━━━━━━━━━━━━━\n";
+  msg += "🔋 *Battery Status*\n";
+  msg += "━━━━━━━━━━━━━━━━━━━━\n";
+  msg += "Voltage: " + String(batteryVoltage, 2) + "V\n";
+  msg += "Level: " + String(batteryPercent) + "%\n\n";
+  
+  msg += "📅 Time: " + gpsTime + "\n";
+  msg += "📆 Date: " + gpsDate + "\n\n";
+  msg += "_User is safe and checking in._";
+  
+  return msg;
+}
+
 String buildAlertMessage() {
   String msg = "🚨 *EMERGENCY ALERT* 🚨\n\n";
   msg += "━━━━━━━━━━━━━━━━━━━━\n";
@@ -432,6 +611,12 @@ String buildAlertMessage() {
     msg += "⚠️ GPS not available\n";
     msg += "Location unknown\n\n";
   }
+  
+  msg += "━━━━━━━━━━━━━━━━━━━━\n";
+  msg += "🔋 *Battery Status*\n";
+  msg += "━━━━━━━━━━━━━━━━━━━━\n";
+  msg += "Voltage: " + String(batteryVoltage, 2) + "V\n";
+  msg += "Level: " + String(batteryPercent) + "%\n\n";
   
   msg += "━━━━━━━━━━━━━━━━━━━━\n";
   msg += "📅 Time: " + gpsTime + "\n";
@@ -509,6 +694,104 @@ bool sendTelegramAlert(String chatId, String message) {
   return true;
 }
 
+// SMS recipient phone number (with country code, e.g., "+639123456789")
+#define SMS_RECIPIENT "+639XXXXXXXXX"
+
+bool sendSMSAlert(String message) {
+  Serial.println("[SMS] Preparing to send SMS...");
+  
+  // Strip markdown formatting for SMS (plain text)
+  String smsMessage = message;
+  smsMessage.replace("*", "");
+  smsMessage.replace("_", "");
+  smsMessage.replace("━", "-");
+  smsMessage.replace("🚨", "[ALERT]");
+  smsMessage.replace("✅", "[OK]");
+  smsMessage.replace("📍", "");
+  smsMessage.replace("🗺️", "Map:");
+  smsMessage.replace("📅", "Time:");
+  smsMessage.replace("📆", "Date:");
+  smsMessage.replace("🔋", "Battery:");
+  smsMessage.replace("⚡", "#");
+  smsMessage.replace("⚠️", "!");
+  
+  // Truncate if too long for SMS (160 chars for single SMS)
+  // But Air780e supports concatenated SMS, so we allow longer
+  if (smsMessage.length() > 500) {
+    smsMessage = smsMessage.substring(0, 497) + "...";
+  }
+  
+  // Set SMS format to text mode
+  if (!sendATCommand("AT+CMGF=1", "OK", 2000)) {
+    Serial.println("[SMS] Failed to set text mode");
+    return false;
+  }
+  
+  // Set character set
+  sendATCommand("AT+CSCS=\"GSM\"", "OK", 1000);
+  
+  // Send SMS command with recipient number
+  String smsCmd = "AT+CMGS=\"" + String(SMS_RECIPIENT) + "\"";
+  LTESerial.println(smsCmd);
+  delay(500);
+  
+  // Wait for '>' prompt
+  unsigned long startTime = millis();
+  bool promptReceived = false;
+  while (millis() - startTime < 5000) {
+    if (LTESerial.available()) {
+      char c = LTESerial.read();
+      if (c == '>') {
+        promptReceived = true;
+        break;
+      }
+    }
+    delay(10);
+  }
+  
+  if (!promptReceived) {
+    Serial.println("[SMS] No prompt received");
+    sendATCommand("\x1B", "OK", 1000);  // Send ESC to cancel
+    return false;
+  }
+  
+  // Send message content
+  LTESerial.print(smsMessage);
+  delay(100);
+  
+  // Send Ctrl+Z to finish
+  LTESerial.write(0x1A);
+  
+  // Wait for confirmation
+  startTime = millis();
+  String response = "";
+  while (millis() - startTime < 30000) {  // SMS can take up to 30 seconds
+    while (LTESerial.available()) {
+      char c = LTESerial.read();
+      response += c;
+    }
+    
+    if (response.indexOf("+CMGS:") != -1) {
+      Serial.println("[SMS] SMS sent successfully!");
+      Serial.print("[SMS] Response: ");
+      Serial.println(response);
+      return true;
+    }
+    
+    if (response.indexOf("ERROR") != -1) {
+      Serial.println("[SMS] SMS sending failed");
+      Serial.print("[SMS] Error: ");
+      Serial.println(response);
+      return false;
+    }
+    
+    delay(100);
+  }
+  
+  Serial.println("[SMS] SMS sending timeout");
+  return false;
+}
+
 // ==================== DISPLAY FUNCTIONS ====================
 
 void updateDisplay() {
@@ -521,9 +804,26 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
-  // Header
+  // Header with battery indicator
   display.setCursor(0, 0);
-  display.println("DISASTER RESPONSE BAG");
+  display.print("DRB ");
+  
+  // Battery indicator
+  if (batteryVoltage > 0.5) {
+    display.print("BAT:");
+    display.print(batteryPercent);
+    display.print("%");
+    
+    // Battery icon
+    display.setCursor(100, 0);
+    display.drawRect(100, 0, 20, 8, SSD1306_WHITE);
+    display.fillRect(120, 2, 2, 4, SSD1306_WHITE);
+    int fillWidth = map(batteryPercent, 0, 100, 0, 18);
+    display.fillRect(101, 1, fillWidth, 6, SSD1306_WHITE);
+  } else {
+    display.print("NO BATTERY");
+  }
+  
   display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
   
   // GPS Status
@@ -557,13 +857,13 @@ void updateDisplay() {
   
   switch (currentState) {
     case STATE_WAITING_GPS:
-      display.print("Status: Waiting GPS");
+      display.print("Waiting for GPS...");
       break;
     case STATE_READY:
-      display.print("READY - Press Button");
+      display.print("TAP=SOS HOLD=OK");
       break;
     case STATE_SENDING_ALERT:
-      display.print("Sending Alert...");
+      display.print("Sending...");
       break;
     case STATE_ALERT_SENT:
       display.print("Alert Sent!");

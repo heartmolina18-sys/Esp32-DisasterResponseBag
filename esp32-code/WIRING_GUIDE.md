@@ -10,6 +10,8 @@
 | SSD1306 OLED | 1 | 128x64 pixel display |
 | Push Button | 1 | Emergency alert trigger |
 | SIM Card | 1 | Active data plan required |
+| LiPo Battery | 1 | 3.7V LiPo battery (1000-3000mAh recommended) |
+| 100k Resistors | 2 | For voltage divider (battery monitoring) |
 
 ## Wiring Diagram
 
@@ -82,6 +84,34 @@
 
 > The button uses the ESP32's internal pull-up resistor, no external resistor needed.
 
+### Battery Monitoring (Voltage Divider)
+
+```
+    Battery (+) ────┬──── [100k R1] ────┬──── [100k R2] ──── GND
+                    │                   │
+                    │                   └──── GPIO 35 (ADC)
+                    │
+                    └──── VIN (ESP32 power input)
+```
+
+| Connection | Description |
+|------------|-------------|
+| Battery (+) | Connect to one end of R1 (100k) |
+| R1-R2 Junction | Connect to GPIO 35 |
+| R2 other end | Connect to GND |
+| Battery (-) | Connect to GND |
+
+> **IMPORTANT:** The voltage divider halves the battery voltage so the 4.2V max stays within the ESP32's 3.3V ADC range.
+
+## Button Usage
+
+| Action | Duration | Function |
+|--------|----------|----------|
+| Short Press | < 2 seconds | Send EMERGENCY ALERT |
+| Long Press | >= 2 seconds | Send "I'M OK" status |
+
+> Hold the button for 2+ seconds for a check-in message, or tap quickly for emergency SOS.
+
 ## Required Libraries
 
 Install these libraries in Arduino IDE:
@@ -143,6 +173,19 @@ Install these libraries in Arduino IDE:
    ```cpp
    #define TELEGRAM_CHAT_ID "YOUR_CHAT_ID_HERE"
    ```
+
+## SMS Fallback Setup
+
+The system automatically falls back to SMS if Telegram fails.
+
+1. Update the SMS recipient in the code:
+   ```cpp
+   #define SMS_RECIPIENT "+639XXXXXXXXX"  // Include country code
+   ```
+
+2. Ensure your SIM card has:
+   - SMS sending capability enabled
+   - Sufficient load/credits for SMS
 
 ## Testing Procedure
 

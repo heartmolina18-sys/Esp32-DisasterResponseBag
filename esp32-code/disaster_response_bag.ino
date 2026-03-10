@@ -704,21 +704,31 @@ void initLTE() {
   display.drawStr(0, 10, "Initializing 4G...");
   display.sendBuffer();
 
-  pinMode(LTE_PWR_PIN, OUTPUT);
-  
-  Serial.println("[LTE] Power cycling module...");
-  digitalWrite(LTE_PWR_PIN, LOW);
-  delay(1000);
-  digitalWrite(LTE_PWR_PIN, HIGH);
-  delay(5000);  // Increased from 3000 to 5000 - module needs more time to boot
-
+  // Initialize serial (module should already be powered via buck converter)
   LTESerial.begin(LTE_BAUD, SERIAL_8N1, LTE_RX_PIN, LTE_TX_PIN);
-  delay(3000);  // Increased from 2000 to 3000 - give serial time to stabilize
-
-  Serial.println("[LTE] Sending initialization commands...");
+  delay(1000);
   
-  // First AT command with longer timeout (module may still be booting)
-  if (!sendATCommand("AT", "OK", 5000)) {
+  // Clear any garbage in the buffer
+  while (LTESerial.available()) {
+    LTESerial.read();
+  }
+
+  Serial.println("[LTE] Testing module communication...");
+  
+  // Try to communicate with module (with retries)
+  bool moduleFound = false;
+  for (int attempt = 0; attempt < 3; attempt++) {
+    Serial.print("[LTE] Attempt ");
+    Serial.println(attempt + 1);
+    
+    if (sendATCommand("AT", "OK", 3000)) {
+      moduleFound = true;
+      break;
+    }
+    delay(500);
+  }
+  
+  if (!moduleFound) {
     Serial.println("[LTE] WARNING: Module not responding");
     display.drawStr(0, 24, "4G: No Response");
     display.sendBuffer();

@@ -710,14 +710,15 @@ void initLTE() {
   digitalWrite(LTE_PWR_PIN, LOW);
   delay(1000);
   digitalWrite(LTE_PWR_PIN, HIGH);
-  delay(3000);
+  delay(5000);  // Increased from 3000 to 5000 - module needs more time to boot
 
   LTESerial.begin(LTE_BAUD, SERIAL_8N1, LTE_RX_PIN, LTE_TX_PIN);
-  delay(2000);
+  delay(3000);  // Increased from 2000 to 3000 - give serial time to stabilize
 
   Serial.println("[LTE] Sending initialization commands...");
   
-  if (!sendATCommand("AT", "OK", 2000)) {
+  // First AT command with longer timeout (module may still be booting)
+  if (!sendATCommand("AT", "OK", 5000)) {
     Serial.println("[LTE] WARNING: Module not responding");
     display.drawStr(0, 24, "4G: No Response");
     display.sendBuffer();

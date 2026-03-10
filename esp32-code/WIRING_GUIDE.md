@@ -38,11 +38,15 @@ You no longer need to edit code to change recipients!
 | ESP32 DevKit | 1 | Main microcontroller with expansion board |
 | Neo6M GPS | 1 | GPS module for location tracking |
 | Air780e | 1 | 4G LTE module for cellular connectivity |
-| SSD1306 OLED | 1 | 128x64 pixel display |
-| Push Button (Emergency) | 1 | Emergency alert trigger (GPIO 33) |
-| Push Button (Config) | 1 | Enter config mode on boot (GPIO 32) |
+| SH1106 OLED | 1 | 128x64 pixel display (I2C) |
+| Push Button 1 | 1 | Config/Stress/Safe (GPIO 33) |
+| Push Button 2 | 1 | Piezo/Light/SOS (GPIO 25) |
+| Config Button | 1 | Enter config mode on boot (GPIO 32) |
+| LED | 1 | Status/Light indicator (GPIO 2) |
+| Piezo Buzzer | 1 | Audio alerts (GPIO 13) |
 | SIM Card | 1 | Active data plan required |
-| LiPo Battery | 1 | 3.7V LiPo battery (1000-3000mAh recommended) |
+| LiPo Battery | 1 | 3.7V LiPo battery (1000-3000mAh) |
+| Buck Converter | 1 | 5V power for Air780e |
 | 100k Resistors | 2 | For voltage divider (battery monitoring) |
 
 ## Wiring Diagram
@@ -68,24 +72,47 @@ You no longer need to edit code to change recipients!
         └────────────────────────────┘  └─────────────────────────┘
 
         ┌─────────────────────────────┐  ┌─────────────────────────┐
-        │        Air780e 4G           │  │     Emergency Button    │
+        │        Air780e 4G           │  │    Button 1 (GPIO 33)   │
         │  ┌─────────────────────┐    │  │  ┌─────────────────┐    │
-        │  │ VCC ← 5V (Important!)│   │  │  │ Pin 1 → GPIO 33 │    │
+        │  │ VCC ← 5V            │    │  │  │ Pin 1 → GPIO 33 │    │
         │  │ GND ← GND           │    │  │  │ Pin 2 → GND     │    │
         │  │ TX  → GPIO 26       │    │  │  └─────────────────┘    │
         │  │ RX  ← GPIO 27       │    │  │                         │
-        │  │ PWR ← GPIO 4        │    │  │  (Uses internal pullup) │
-        │  └─────────────────────┘    │  └─────────────────────────┘
+        │  │ PWR ← GPIO 4        │    │  │  Hold=Config            │
+        │  └─────────────────────┘    │  │  Tap=Stress             │
+        └─────────────────────────────┘  │  Double Tap=Safe        │
+                                         └─────────────────────────┘
+        
+        ┌─────────────────────────────┐  ┌─────────────────────────┐
+        │    Button 2 (GPIO 25)       │  │    Config Button        │
+        │  ┌─────────────────────┐    │  │  ┌─────────────────┐    │
+        │  │ Pin 1 → GPIO 25     │    │  │  │ Pin 1 → GPIO 32 │    │
+        │  │ Pin 2 → GND         │    │  │  │ Pin 2 → GND     │    │
+        │  └─────────────────────┘    │  │  └─────────────────┘    │
+        │                             │  │                         │
+        │  Hold=Piezo                 │  │  (Hold on boot)         │
+        │  Tap=Light                  │  └─────────────────────────┘
+        │  Double Tap=SOS             │
         └─────────────────────────────┘
         
         ┌─────────────────────────────┐
-        │       Config Button         │
+        │    LED (GPIO 2)             │
         │  ┌─────────────────────┐    │
-        │  │ Pin 1 → GPIO 32     │    │
-        │  │ Pin 2 → GND         │    │
+        │  │ (+) → GPIO 2        │    │
+        │  │ (-) → GND           │    │
         │  └─────────────────────┘    │
         │                             │
-        │  (Hold on boot for config)  │
+        │  Status indicator + Light   │
+        └─────────────────────────────┘
+        
+        ┌─────────────────────────────┐
+        │  Piezo Buzzer (GPIO 13)     │
+        │  ┌─────────────────────┐    │
+        │  │ (+) → GPIO 13       │    │
+        │  │ (-) → GND           │    │
+        │  └─────────────────────┘    │
+        │                             │
+        │  Audio alerts & SOS sound   │
         └─────────────────────────────┘
 ```
 
@@ -118,21 +145,54 @@ You no longer need to edit code to change recipients!
 | SDA | GPIO 21 | White |
 | SCL | GPIO 22 | Gray |
 
-### Emergency Button (SOS / I'm OK)
+### Button 1 (GPIO 33) - Config/Stress/Safe
 | Button Pin | ESP32 Pin |
 |------------|-----------|
 | Terminal 1 | GPIO 33 |
 | Terminal 2 | GND |
 
-> Uses internal pull-up. Short press = SOS, Long press (2 sec) = I'm OK
+> **Functions:**
+> - **Hold (2+ sec)**: Enter Configuration Mode
+> - **Single Tap**: Send Stress Signal (with beep pattern)
+> - **Double Tap**: Send "I'm Safe" Status (within 500ms)
 
-### Config Button
+### Button 2 (GPIO 25) - Piezo/Light/SOS
+| Button Pin | ESP32 Pin |
+|------------|-----------|
+| Terminal 1 | GPIO 25 |
+| Terminal 2 | GND |
+
+> **Functions:**
+> - **Hold (2+ sec)**: Play Piezo Alert Sound
+> - **Single Tap**: Turn on Stable Light (LED stays on)
+> - **Double Tap**: Trigger SOS Emergency (light + sound + message, within 500ms)
+
+### Config Button (GPIO 32)
 | Button Pin | ESP32 Pin |
 |------------|-----------|
 | Terminal 1 | GPIO 32 |
 | Terminal 2 | GND |
 
-> Uses internal pull-up. Hold while powering on to enter config mode.
+> Hold while powering on to enter configuration mode.
+
+### LED Status Indicator (GPIO 2)
+| LED Pin | ESP32 Pin |
+|---------|-----------|
+| Positive (+) | GPIO 2 |
+| Negative (-) | GND |
+
+> Provides visual feedback. Can be turned on via Button 2 tap.
+
+### Piezo Buzzer (GPIO 13)
+| Piezo Pin | ESP32 Pin |
+|-----------|-----------|
+| Positive (+) | GPIO 13 |
+| Negative (-) | GND |
+
+> Plays different alert tones:
+> - Stress Signal: 3 quick beeps
+> - Safe Signal: 2-tone ascending beep
+> - SOS Signal: Morse code SOS pattern
 
 ### Battery Monitoring (Voltage Divider)
 
@@ -153,14 +213,30 @@ You no longer need to edit code to change recipients!
 
 > **IMPORTANT:** The voltage divider halves the battery voltage so the 4.2V max stays within the ESP32's 3.3V ADC range.
 
-## Button Usage
+## Quick Reference - Button Usage
 
-| Action | Duration | Function |
-|--------|----------|----------|
-| Short Press | < 2 seconds | Send EMERGENCY ALERT |
-| Long Press | >= 2 seconds | Send "I'M OK" status |
+### Button 1 (Main Alert Button)
+```
+Hold (2+ sec) ──→ Configuration Mode
+     ↓
+Single Tap ──→ Stress Signal (beep + message)
+     ↓
+Double Tap (within 500ms) ──→ I'm Safe Status (tone + message)
+```
 
-> Hold the button for 2+ seconds for a check-in message, or tap quickly for emergency SOS.
+### Button 2 (Light/Sound/SOS)
+```
+Hold (2+ sec) ──→ Piezo Buzzer Alert
+     ↓
+Single Tap ──→ LED Light ON (stable)
+     ↓
+Double Tap (within 500ms) ──→ SOS Emergency (light + sound + message)
+```
+
+### Battery Life with 3.7V LiPo
+- Idle (GPS + Display): ~8-12 hours
+- Active alerts: ~15 minutes per alert
+- Always use buck converter to step up to 5V for Air780e module
 
 ## Required Libraries
 

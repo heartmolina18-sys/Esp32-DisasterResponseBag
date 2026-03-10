@@ -69,8 +69,14 @@
 // Config Mode Button (separate button)
 #define CONFIG_BUTTON_PIN  32
 
-// LED Indicator (built-in)
+// LED Indicator
 #define LED_PIN        2
+
+// Piezo Buzzer (piezo speaker)
+#define PIEZO_PIN      13
+
+// Button 2 - Secondary button for LED/Piezo/SOS
+#define BUTTON2_PIN    25
 
 // Battery Monitoring (voltage divider)
 #define BATTERY_PIN    35
@@ -124,12 +130,26 @@ bool gpsFixed = false;
 String gpsTime = "--:--:--";
 String gpsDate = "--/--/----";
 
-// Button State
-volatile bool buttonPressed = false;
-volatile unsigned long buttonPressTime = 0;
-volatile unsigned long buttonReleaseTime = 0;
-volatile bool buttonReleased = false;
-unsigned long lastDebounceTime = 0;
+// Button 1 State (Config/Stress/Safe)
+volatile bool button1Pressed = false;
+volatile unsigned long button1PressTime = 0;
+volatile unsigned long button1ReleaseTime = 0;
+volatile bool button1Released = false;
+unsigned long lastButton1DebounceTime = 0;
+int button1TapCount = 0;
+unsigned long button1LastTapTime = 0;
+
+// Button 2 State (Piezo/Light/SOS)
+volatile bool button2Pressed = false;
+volatile unsigned long button2PressTime = 0;
+volatile unsigned long button2ReleaseTime = 0;
+volatile bool button2Released = false;
+unsigned long lastButton2DebounceTime = 0;
+int button2TapCount = 0;
+unsigned long button2LastTapTime = 0;
+
+#define DOUBLE_TAP_WINDOW 500  // 500ms to detect double tap
+#define LONG_PRESS_TIME 2000   // 2 seconds for long press
 
 // Battery Monitoring
 float batteryVoltage = 0.0;
@@ -186,8 +206,15 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-// Initialize Emergency Button
+  // Initialize Piezo Buzzer
+  pinMode(PIEZO_PIN, OUTPUT);
+  digitalWrite(PIEZO_PIN, LOW);
+
+  // Initialize Button 1 (Config/Stress/Safe)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  
+  // Initialize Button 2 (Piezo/Light/SOS)
+  pinMode(BUTTON2_PIN, INPUT_PULLUP);
   
   // Initialize Config Button
   pinMode(CONFIG_BUTTON_PIN, INPUT_PULLUP);
@@ -210,9 +237,13 @@ void setup() {
     return;
   }
 
-  // Normal operation mode
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonPressISR, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonReleaseISR, RISING);
+  // Normal operation mode - Button 1 interrupts
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), button1PressISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), button1ReleaseISR, RISING);
+  
+  // Button 2 interrupts
+  attachInterrupt(digitalPinToInterrupt(BUTTON2_PIN), button2PressISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BUTTON2_PIN), button2ReleaseISR, RISING);
 
   // Initialize GPS Module
   initGPS();
@@ -252,17 +283,71 @@ void loop() {
   // Update battery level
   updateBattery();
 
-  // Handle button press/release for long press detection
-  if (buttonReleased && buttonPressed) {
-    buttonReleased = false;
-    buttonPressed = false;
+  // ========== BUTTON 1 HANDLING (Config/Stress/Safe) ==========
+  if (button1Released && button1Pressed) {
+    button1Released = false;
+    button1Pressed = false;
     
-    unsigned long pressDuration = buttonReleaseTime - buttonPressTime;
+    unsigned long pressDuration = button1ReleaseTime - button1PressTime;
     
     if (pressDuration >= LONG_PRESS_TIME) {
-      handleImOkButton();
+      // Hold button for configuration
+      handleConfigButton();
     } else {
-      handleEmergencyButton();
+      // Tap detected - check for double tap
+      if (millis() - button1LastTapTime < DOUBLE_TAP_WINDOW) {
+        button1TapCount++;
+      } else {
+        button1TapCount = 1;
+      }
+      button1LastTapTime = millis();
+      
+      if (button1TapCount == 1) {
+        // Wait to see if double tap happens
+        delay(DOUBLE_TAP_WINDOW);
+        if (button1TapCount == 1) {
+          // Single tap - Stress signal
+          handleStressButton();
+        }
+      } else if (button1TapCount >= 2) {
+        // Double tap - I'm safe
+        handleSafeButton();
+        button1TapCount = 0;
+      }
+    }
+  }
+
+  // ========== BUTTON 2 HANDLING (Piezo/Light/SOS) ==========
+  if (button2Released && button2Pressed) {
+    button2Released = false;
+    button2Pressed = false;
+    
+    unsigned long pressDuration = button2ReleaseTime - button2PressTime;
+    
+    if (pressDuration >= LONG_PRESS_TIME) {
+      // Hold button - Play piezo sound
+      handlePiezoBuzzer();
+    } else {
+      // Tap detected - check for double tap
+      if (millis() - button2LastTapTime < DOUBLE_TAP_WINDOW) {
+        button2TapCount++;
+      } else {
+        button2TapCount = 1;
+      }
+      button2LastTapTime = millis();
+      
+      if (button2TapCount == 1) {
+        // Wait to see if double tap happens
+        delay(DOUBLE_TAP_WINDOW);
+        if (button2TapCount == 1) {
+          // Single tap - Stable light (LED on)
+          handleStableLightButton();
+        }
+      } else if (button2TapCount >= 2) {
+        // Double tap - SOS signal (light + piezo)
+        handleSOSButton();
+        button2TapCount = 0;
+      }
     }
   }
 
@@ -276,6 +361,40 @@ void loop() {
 }
 
 // ==================== CONFIG MODE FUNCTIONS ====================
+
+// Button 1 ISR (Config/Stress/Safe)
+void IRAM_ATTR button1PressISR() {
+  if ((millis() - lastButton1DebounceTime) > DEBOUNCE_DELAY) {
+    button1PressTime = millis();
+    button1Pressed = true;
+    lastButton1DebounceTime = millis();
+  }
+}
+
+void IRAM_ATTR button1ReleaseISR() {
+  if ((millis() - lastButton1DebounceTime) > DEBOUNCE_DELAY) {
+    button1ReleaseTime = millis();
+    button1Released = true;
+    lastButton1DebounceTime = millis();
+  }
+}
+
+// Button 2 ISR (Piezo/Light/SOS)
+void IRAM_ATTR button2PressISR() {
+  if ((millis() - lastButton2DebounceTime) > DEBOUNCE_DELAY) {
+    button2PressTime = millis();
+    button2Pressed = true;
+    lastButton2DebounceTime = millis();
+  }
+}
+
+void IRAM_ATTR button2ReleaseISR() {
+  if ((millis() - lastButton2DebounceTime) > DEBOUNCE_DELAY) {
+    button2ReleaseTime = millis();
+    button2Released = true;
+    lastButton2DebounceTime = millis();
+  }
+}
 
 bool checkConfigMode() {
   Serial.println("[CONFIG] Checking for config mode...");
@@ -887,13 +1006,25 @@ void updateGPS() {
   }
 }
 
-// ==================== EMERGENCY ALERT FUNCTIONS ====================
+// ==================== BUTTON HANDLER FUNCTIONS ====================
 
-void handleImOkButton() {
-  Serial.println("\n[STATUS] I'M OK - Long press detected\n");
+// Button 1: Hold = Config, Tap = Stress, Double Tap = I'm Safe
+void handleConfigButton() {
+  Serial.println("\n[CONFIG] Configuration button held\n");
+  display.clearBuffer();
+  display.drawStr(0, 20, "Entering config");
+  display.drawStr(0, 35, "mode...");
+  display.sendBuffer();
+  delay(1000);
+  // Restart ESP to enter config mode
+  ESP.restart();
+}
+
+void handleStressButton() {
+  Serial.println("\n[STRESS] Stress signal sent\n");
+  playStressSignal();
   
   currentState = STATE_SENDING_ALERT;
-  digitalWrite(LED_PIN, HIGH);
   
   // If no GPS fix, try cell tower location
   if (!gpsFixed) {
@@ -902,14 +1033,57 @@ void handleImOkButton() {
     display.drawStr(0, 35, "Getting cell tower");
     display.drawStr(0, 50, "location...");
     display.sendBuffer();
-    
     getCellTowerLocation();
   }
   
   display.clearBuffer();
   display.setFont(u8g2_font_10x20_tf);
-  display.drawStr(10, 25, "SENDING");
-  display.drawStr(10, 48, "STATUS");
+  display.drawStr(0, 25, "STRESS");
+  display.drawStr(0, 48, "SIGNAL");
+  display.sendBuffer();
+  display.setFont(u8g2_font_6x10_tf);
+  
+  String message = buildStressMessage();
+  bool success = sendToAllRecipients(message);
+  
+  if (success) {
+    alertCount++;
+    Serial.println("[STRESS] Signal sent successfully!");
+    display.clearBuffer();
+    display.drawStr(10, 30, "SENT!");
+    display.sendBuffer();
+    delay(1500);
+  } else {
+    Serial.println("[STRESS] Failed to send!");
+    display.clearBuffer();
+    display.drawStr(0, 30, "FAILED!");
+    display.sendBuffer();
+    delay(1500);
+  }
+  
+  currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
+}
+
+void handleSafeButton() {
+  Serial.println("\n[SAFE] I'm safe signal sent\n");
+  playSafeSignal();
+  
+  currentState = STATE_SENDING_ALERT;
+  
+  // If no GPS fix, try cell tower location
+  if (!gpsFixed) {
+    display.clearBuffer();
+    display.drawStr(0, 20, "No GPS signal");
+    display.drawStr(0, 35, "Getting cell tower");
+    display.drawStr(0, 50, "location...");
+    display.sendBuffer();
+    getCellTowerLocation();
+  }
+  
+  display.clearBuffer();
+  display.setFont(u8g2_font_10x20_tf);
+  display.drawStr(10, 25, "I'M");
+  display.drawStr(20, 48, "SAFE");
   display.sendBuffer();
   display.setFont(u8g2_font_6x10_tf);
   
@@ -917,35 +1091,42 @@ void handleImOkButton() {
   bool success = sendToAllRecipients(message);
   
   if (success) {
-    Serial.println("[STATUS] Status sent successfully!");
-    
+    Serial.println("[SAFE] Status sent successfully!");
     display.clearBuffer();
-    display.setFont(u8g2_font_10x20_tf);
-    display.drawStr(15, 25, "STATUS");
-    display.drawStr(20, 48, "SENT!");
+    display.drawStr(10, 30, "SENT!");
     display.sendBuffer();
-    display.setFont(u8g2_font_6x10_tf);
-    delay(2000);
+    delay(1500);
   } else {
-    currentState = STATE_ERROR;
-    Serial.println("[STATUS] Failed to send status!");
-    
+    Serial.println("[SAFE] Failed to send!");
     display.clearBuffer();
-    display.drawStr(0, 24, "STATUS FAILED!");
-    display.drawStr(0, 40, "Check connection");
+    display.drawStr(0, 30, "FAILED!");
     display.sendBuffer();
-    delay(2000);
+    delay(1500);
   }
   
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
-  digitalWrite(LED_PIN, LOW);
 }
 
-void handleEmergencyButton() {
-  Serial.println("\n[ALERT] EMERGENCY BUTTON PRESSED!\n");
+// Button 2: Hold = Piezo Buzzer, Tap = Stable Light, Double Tap = SOS
+void handlePiezoBuzzer() {
+  Serial.println("\n[PIEZO] Buzzer held\n");
+  playSOSSignal();
+}
+
+void handleStableLightButton() {
+  Serial.println("\n[LIGHT] Stable light activated\n");
+  setLEDOn();
+  
+  display.clearBuffer();
+  display.drawStr(0, 30, "Light ON");
+  display.sendBuffer();
+  delay(1000);
+}
+
+void handleSOSButton() {
+  Serial.println("\n[SOS] Emergency SOS activated!\n");
   
   currentState = STATE_SENDING_ALERT;
-  digitalWrite(LED_PIN, HIGH);
   
   // If no GPS fix, try cell tower location
   if (!gpsFixed) {
@@ -954,46 +1135,40 @@ void handleEmergencyButton() {
     display.drawStr(0, 35, "Getting cell tower");
     display.drawStr(0, 50, "location...");
     display.sendBuffer();
-    
     getCellTowerLocation();
   }
   
   display.clearBuffer();
   display.setFont(u8g2_font_10x20_tf);
-  display.drawStr(10, 25, "SENDING");
-  display.drawStr(15, 48, "ALERT!");
+  display.drawStr(30, 30, "SOS!");
   display.sendBuffer();
   display.setFont(u8g2_font_6x10_tf);
+  
+  // Play SOS pattern continuously
+  for (int i = 0; i < 3; i++) {
+    playSOSSignal();
+    delay(500);
+  }
   
   String message = buildAlertMessage();
   bool success = sendToAllRecipients(message);
   
   if (success) {
-    currentState = STATE_ALERT_SENT;
     alertCount++;
-    alertSentTime = millis();
-    Serial.println("[ALERT] Alert sent successfully!");
-    
+    Serial.println("[SOS] Alert sent successfully!");
     display.clearBuffer();
-    display.setFont(u8g2_font_10x20_tf);
-    display.drawStr(25, 25, "ALERT");
-    display.drawStr(25, 48, "SENT!");
+    display.drawStr(10, 30, "SENT!");
     display.sendBuffer();
-    display.setFont(u8g2_font_6x10_tf);
-    delay(2000);
+    delay(1500);
   } else {
-    currentState = STATE_ERROR;
-    Serial.println("[ALERT] Failed to send alert!");
-    
+    Serial.println("[SOS] Failed to send!");
     display.clearBuffer();
-    display.drawStr(0, 24, "ALERT FAILED!");
-    display.drawStr(0, 40, "Check connection");
+    display.drawStr(0, 30, "FAILED!");
     display.sendBuffer();
-    delay(2000);
+    delay(1500);
   }
   
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
-  digitalWrite(LED_PIN, LOW);
 }
 
 bool sendToAllRecipients(String message) {
@@ -1030,6 +1205,35 @@ bool sendToAllRecipients(String message) {
   }
   
   return anySuccess;
+}
+
+String buildStressMessage() {
+  String msg = "STRESS SIGNAL\n\n";
+  msg += "Device: " + String(config.deviceName) + "\n";
+  msg += "Status: Under stress or experiencing difficulty\n\n";
+  
+  if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
+    msg += "Location";
+    if (locationFromLBS) {
+      msg += " (Cell Tower - approx):\n";
+    } else {
+      msg += " (GPS):\n";
+    }
+    msg += "Lat: " + String(latitude, 6) + "\n";
+    msg += "Lon: " + String(longitude, 6) + "\n";
+    if (!locationFromLBS) {
+      msg += "Alt: " + String(altitude, 1) + "m\n";
+    }
+    msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
+  } else {
+    msg += "Location: Not available\n\n";
+  }
+  
+  msg += "Battery: " + String(batteryPercent) + "% (" + String(batteryVoltage, 2) + "V)\n";
+  msg += "Time: " + gpsTime + "\n";
+  msg += "Date: " + gpsDate;
+  
+  return msg;
 }
 
 String buildStatusMessage() {
@@ -1279,6 +1483,81 @@ void updateDisplay() {
   display.drawStr(105, 62, countStr);
   
   display.sendBuffer();
+}
+
+// Piezo control functions
+void playTone(int frequency, int duration) {
+  tone(PIEZO_PIN, frequency, duration);
+}
+
+void stopTone() {
+  noTone(PIEZO_PIN);
+}
+
+// Play different alert tones
+void playStressSignal() {
+  // Quick beep-beep pattern
+  playTone(1000, 200);
+  delay(100);
+  playTone(1000, 200);
+  delay(100);
+  playTone(1000, 200);
+}
+
+void playSafeSignal() {
+  // Single ascending beep
+  playTone(800, 150);
+  delay(50);
+  playTone(1200, 150);
+}
+
+void playSOSSignal() {
+  // SOS morse code: dot-dot-dot dash-dash-dash dot-dot-dot
+  int dotLength = 200;
+  int dashLength = 600;
+  int gap = 100;
+  
+  // S (dot-dot-dot)
+  for (int i = 0; i < 3; i++) {
+    playTone(2000, dotLength);
+    delay(gap);
+  }
+  delay(gap);
+  
+  // O (dash-dash-dash)
+  for (int i = 0; i < 3; i++) {
+    playTone(1500, dashLength);
+    delay(gap);
+  }
+  delay(gap);
+  
+  // S (dot-dot-dot)
+  for (int i = 0; i < 3; i++) {
+    playTone(2000, dotLength);
+    delay(gap);
+  }
+  
+  stopTone();
+}
+
+// LED control functions
+void setLEDOn() {
+  digitalWrite(LED_PIN, HIGH);
+}
+
+void setLEDOff() {
+  digitalWrite(LED_PIN, LOW);
+}
+
+void setLEDPulse(int intervalMs) {
+  static unsigned long lastPulse = 0;
+  static bool ledState = false;
+  
+  if (millis() - lastPulse >= intervalMs) {
+    lastPulse = millis();
+    ledState = !ledState;
+    digitalWrite(LED_PIN, ledState);
+  }
 }
 
 void updateLED() {

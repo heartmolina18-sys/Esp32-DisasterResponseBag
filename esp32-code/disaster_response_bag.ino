@@ -56,7 +56,7 @@
 #define LTE_RX_PIN   26
 #define LTE_TX_PIN   27
 #define LTE_PWR_PIN  4
-#define LTE_BAUD     115200
+#define LTE_BAUD     38400
 
 // OLED Display (SH1106 via I2C)
 #define SCREEN_WIDTH   128

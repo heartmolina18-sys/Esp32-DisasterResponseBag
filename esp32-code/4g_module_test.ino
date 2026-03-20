@@ -14,6 +14,7 @@
 // ---- PIN DEFINITIONS ----
 #define LTE_RX_PIN   26
 #define LTE_TX_PIN   27
+#define LTE_PWR_PIN  4    // PWRKEY pin to power on module
 #define LTE_BAUD     38400
 #define OLED_SDA     21
 #define OLED_SCL     22
@@ -62,13 +63,32 @@ void setup() {
   display.setFont(u8g2_font_6x10_tf);
 
   showOLED("4G Module Test", "Starting...");
-  Serial.println("\n========== 4G MODULE TEST ==========\n");
+  Serial.println("\n========== 4G MODULE TEST WITH PWRKEY ==========\n");
   delay(1500);
 
-  // Init LTE serial - give extra time for stable power
+  // Initialize PWRKEY pin
+  Serial.println("[SETUP] Initializing PWRKEY pin (GPIO 4)...");
+  pinMode(LTE_PWR_PIN, OUTPUT);
+  digitalWrite(LTE_PWR_PIN, HIGH);  // Start HIGH (inactive)
+  delay(500);
+
+  // Wait for stable power
   showOLED("4G Module Test", "Waiting for", "stable power...");
   Serial.println("[POWER] Waiting 5s for stable 5V supply...");
   delay(5000);  // Wait for buck converter to stabilize
+
+  // Power on the module by pulsing PWRKEY
+  showOLED("4G Module Test", "Powering on", "module...");
+  Serial.println("[PWRKEY] Pulsing PWRKEY pin LOW for 1.2 seconds...");
+  digitalWrite(LTE_PWR_PIN, LOW);   // Pull PWRKEY LOW
+  delay(1200);                      // Hold for 1.2 seconds
+  digitalWrite(LTE_PWR_PIN, HIGH);  // Release PWRKEY
+  Serial.println("[PWRKEY] PWRKEY pulse complete");
+  
+  // Wait for module to boot
+  showOLED("4G Module Test", "Waiting for", "module boot...");
+  Serial.println("[BOOT] Waiting 3s for module to boot...");
+  delay(3000);
 
   showOLED("4G Module Test", "Init serial...");
   LTESerial.begin(LTE_BAUD, SERIAL_8N1, LTE_RX_PIN, LTE_TX_PIN);

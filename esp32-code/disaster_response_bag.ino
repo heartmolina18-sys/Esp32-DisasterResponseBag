@@ -155,7 +155,7 @@ int button2TapCount = 0;
 unsigned long button2LastTapTime = 0;
 
 #define DOUBLE_TAP_WINDOW 500  // 500ms to detect double tap
-#define LONG_PRESS_TIME 2000   // 2 seconds for long press
+// Note: LONG_PRESS_TIME is defined in PIN DEFINITIONS section
 
 // Battery Monitoring
 float batteryVoltage = 0.0;

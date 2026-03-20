@@ -180,6 +180,15 @@ bool configMode = false;
 unsigned long alertSentTime = 0;
 int alertCount = 0;
 
+// ==================== FORWARD DECLARATIONS ====================
+// Button ISR functions (defined later in code)
+void IRAM_ATTR button1PressISR();
+void IRAM_ATTR button1ReleaseISR();
+void IRAM_ATTR button2PressISR();
+void IRAM_ATTR button2ReleaseISR();
+
+// ==================== MAIN CODE ====================
+
 // ==================== INTERRUPT SERVICE ROUTINE ====================
 
 // (ISR functions are defined later in CONFIG MODE FUNCTIONS section)

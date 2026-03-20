@@ -225,7 +225,7 @@ void loop() {
         break;
       
       case 'a':
-      case 'A':
+      case 'A': {
         Serial.println("\nEnter AT command (e.g., AT):");
         while (!Serial.available()) delay(10);
         
@@ -233,6 +233,7 @@ void loop() {
         customCmd.trim();
         sendATCommand(customCmd, "OK", 5000);
         break;
+      }
       
       default:
         break;

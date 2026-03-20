@@ -182,21 +182,7 @@ int alertCount = 0;
 
 // ==================== INTERRUPT SERVICE ROUTINE ====================
 
-void IRAM_ATTR buttonPressISR() {
-  if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
-    buttonPressTime = millis();
-    buttonPressed = true;
-    lastDebounceTime = millis();
-  }
-}
-
-void IRAM_ATTR buttonReleaseISR() {
-  if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
-    buttonReleaseTime = millis();
-    buttonReleased = true;
-    lastDebounceTime = millis();
-  }
-}
+// (ISR functions are defined later in CONFIG MODE FUNCTIONS section)
 
 // ==================== SETUP ====================
 

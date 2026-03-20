@@ -211,6 +211,10 @@ void setup() {
   pinMode(PIEZO_PIN, OUTPUT);
   digitalWrite(PIEZO_PIN, LOW);
 
+  // Initialize LTE PWRKEY (Power Key) pin - must be LOW to power on
+  pinMode(LTE_PWR_PIN, OUTPUT);
+  digitalWrite(LTE_PWR_PIN, HIGH);  // Start HIGH (inactive)
+
   // Initialize Button 1 (Config/Stress/Safe)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   
@@ -813,10 +817,24 @@ void initLTE() {
   Serial.println("[LTE] Initializing Air780e 4G module...");
   
   display.clearBuffer();
+  display.drawStr(0, 10, "Powering on 4G...");
+  display.sendBuffer();
+
+  // Power on the module by pulsing PWRKEY pin LOW for ~1 second
+  Serial.println("[LTE] Pulsing PWRKEY to power on module...");
+  digitalWrite(LTE_PWR_PIN, LOW);   // Pull PWRKEY LOW
+  delay(1200);                      // Hold for 1.2 seconds
+  digitalWrite(LTE_PWR_PIN, HIGH);  // Release PWRKEY
+  
+  // Wait for module to boot
+  Serial.println("[LTE] Waiting for module to boot...");
+  delay(3000);  // Give module time to start up
+  
+  display.clearBuffer();
   display.drawStr(0, 10, "Initializing 4G...");
   display.sendBuffer();
 
-  // Initialize serial (module should already be powered via buck converter)
+  // Initialize serial communication with module
   LTESerial.begin(LTE_BAUD, SERIAL_8N1, LTE_RX_PIN, LTE_TX_PIN);
   delay(1000);
   

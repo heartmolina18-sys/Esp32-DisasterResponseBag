@@ -130,6 +130,12 @@ bool gpsFixed = false;
 String gpsTime = "--:--:--";
 String gpsDate = "--/--/----";
 
+// Last Known Location (fallback)
+double lastKnownLat = 0.0;
+double lastKnownLon = 0.0;
+unsigned long lastLocationUpdate = 0;
+bool hasLastKnownLocation = false;
+
 // Button 1 State (Config/Stress/Safe)
 volatile bool button1Pressed = false;
 volatile unsigned long button1PressTime = 0;
@@ -904,6 +910,29 @@ void updateBattery() {
   batteryPercent = constrain(batteryPercent, 0, 100);
 }
 
+// Use last known location as final fallback
+bool useLastKnownLocation() {
+  if (hasLastKnownLocation) {
+    latitude = lastKnownLat;
+    longitude = lastKnownLon;
+    locationFromLBS = false;  // Mark as not from LBS (it's from memory)
+    
+    unsigned long timeSinceUpdate = millis() - lastLocationUpdate;
+    unsigned long minutesOld = timeSinceUpdate / 60000;
+    
+    Serial.print("[FALLBACK] Using last known location (");
+    Serial.print(minutesOld);
+    Serial.println(" minutes old)");
+    Serial.print("[FALLBACK] Lat: ");
+    Serial.print(latitude, 6);
+    Serial.print(", Lon: ");
+    Serial.println(longitude, 6);
+    
+    return true;
+  }
+  return false;
+}
+
 // Get location from Cell Tower (LBS) using Air780e
 bool getCellTowerLocation() {
   Serial.println("[LBS] Getting cell tower location...");
@@ -943,6 +972,13 @@ bool getCellTowerLocation() {
         
         latitude = latStr.toDouble();
         longitude = lonStr.toDouble();
+        
+        // Save as last known location
+        lastKnownLat = latitude;
+        lastKnownLon = longitude;
+        lastLocationUpdate = millis();
+        hasLastKnownLocation = true;
+        
         locationFromLBS = true;
         
         Serial.print("[LBS] Cell Tower Location - Lat: ");
@@ -976,6 +1012,13 @@ void updateGPS() {
   if (gps.location.isValid() && gps.location.isUpdated()) {
     latitude = gps.location.lat();
     longitude = gps.location.lng();
+    
+    // Save as last known location
+    lastKnownLat = latitude;
+    lastKnownLon = longitude;
+    lastLocationUpdate = millis();
+    hasLastKnownLocation = true;
+    
     gpsFixed = true;
     locationFromLBS = false;  // Location from GPS, not LBS
     
@@ -1026,14 +1069,25 @@ void handleStressButton() {
   
   currentState = STATE_SENDING_ALERT;
   
-  // If no GPS fix, try cell tower location
+  // If no GPS fix, try cell tower location, then last known
   if (!gpsFixed) {
     display.clearBuffer();
     display.drawStr(0, 20, "No GPS signal");
     display.drawStr(0, 35, "Getting cell tower");
     display.drawStr(0, 50, "location...");
     display.sendBuffer();
-    getCellTowerLocation();
+    
+    // Try cell tower location
+    if (!getCellTowerLocation()) {
+      // If cell tower fails, try last known location
+      if (useLastKnownLocation()) {
+        display.clearBuffer();
+        display.drawStr(0, 20, "Using last known");
+        display.drawStr(0, 35, "location");
+        display.sendBuffer();
+        delay(1500);
+      }
+    }
   }
   
   display.clearBuffer();
@@ -1070,14 +1124,25 @@ void handleSafeButton() {
   
   currentState = STATE_SENDING_ALERT;
   
-  // If no GPS fix, try cell tower location
+  // If no GPS fix, try cell tower location, then last known
   if (!gpsFixed) {
     display.clearBuffer();
     display.drawStr(0, 20, "No GPS signal");
     display.drawStr(0, 35, "Getting cell tower");
     display.drawStr(0, 50, "location...");
     display.sendBuffer();
-    getCellTowerLocation();
+    
+    // Try cell tower location
+    if (!getCellTowerLocation()) {
+      // If cell tower fails, try last known location
+      if (useLastKnownLocation()) {
+        display.clearBuffer();
+        display.drawStr(0, 20, "Using last known");
+        display.drawStr(0, 35, "location");
+        display.sendBuffer();
+        delay(1500);
+      }
+    }
   }
   
   display.clearBuffer();
@@ -1128,14 +1193,25 @@ void handleSOSButton() {
   
   currentState = STATE_SENDING_ALERT;
   
-  // If no GPS fix, try cell tower location
+  // If no GPS fix, try cell tower location, then last known
   if (!gpsFixed) {
     display.clearBuffer();
     display.drawStr(0, 20, "No GPS signal");
     display.drawStr(0, 35, "Getting cell tower");
     display.drawStr(0, 50, "location...");
     display.sendBuffer();
-    getCellTowerLocation();
+    
+    // Try cell tower location
+    if (!getCellTowerLocation()) {
+      // If cell tower fails, try last known location
+      if (useLastKnownLocation()) {
+        display.clearBuffer();
+        display.drawStr(0, 20, "Using last known");
+        display.drawStr(0, 35, "location");
+        display.sendBuffer();
+        delay(1500);
+      }
+    }
   }
   
   display.clearBuffer();
@@ -1214,14 +1290,20 @@ String buildStressMessage() {
   
   if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
     msg += "Location";
-    if (locationFromLBS) {
-      msg += " (Cell Tower - approx):\n";
-    } else {
+    if (gpsFixed) {
       msg += " (GPS):\n";
+    } else if (locationFromLBS) {
+      msg += " (Cell Tower - approx):\n";
+    } else if (hasLastKnownLocation) {
+      unsigned long timeSince = millis() - lastLocationUpdate;
+      unsigned long minutesOld = timeSince / 60000;
+      msg += " (Last Known - " + String(minutesOld) + " minutes old):\n";
+    } else {
+      msg += ":\n";
     }
     msg += "Lat: " + String(latitude, 6) + "\n";
     msg += "Lon: " + String(longitude, 6) + "\n";
-    if (!locationFromLBS) {
+    if (gpsFixed) {
       msg += "Alt: " + String(altitude, 1) + "m\n";
     }
     msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
@@ -1243,14 +1325,20 @@ String buildStatusMessage() {
   
   if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
     msg += "Location";
-    if (locationFromLBS) {
-      msg += " (Cell Tower - approx):\n";
-    } else {
+    if (gpsFixed) {
       msg += " (GPS):\n";
+    } else if (locationFromLBS) {
+      msg += " (Cell Tower - approx):\n";
+    } else if (hasLastKnownLocation) {
+      unsigned long timeSince = millis() - lastLocationUpdate;
+      unsigned long minutesOld = timeSince / 60000;
+      msg += " (Last Known - " + String(minutesOld) + " minutes old):\n";
+    } else {
+      msg += ":\n";
     }
     msg += "Lat: " + String(latitude, 6) + "\n";
     msg += "Lon: " + String(longitude, 6) + "\n";
-    if (!locationFromLBS) {
+    if (gpsFixed) {
       msg += "Alt: " + String(altitude, 1) + "m\n";
     }
     msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
@@ -1272,16 +1360,21 @@ String buildAlertMessage() {
   
   if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
     msg += "Location";
-    if (locationFromLBS) {
-      msg += " (Cell Tower - approx):\n";
-      msg += "Accuracy: 100m-2km\n";
-    } else {
+    if (gpsFixed) {
       msg += " (GPS):\n";
       msg += "Satellites: " + String(satellites) + "\n";
+    } else if (locationFromLBS) {
+      msg += " (Cell Tower - approx):\n";
+      msg += "Accuracy: 100m-2km\n";
+    } else if (hasLastKnownLocation) {
+      unsigned long timeSince = millis() - lastLocationUpdate;
+      unsigned long minutesOld = timeSince / 60000;
+      msg += " (Last Known - " + String(minutesOld) + " minutes old):\n";
+      msg += "Accuracy: Unknown\n";
     }
     msg += "Lat: " + String(latitude, 6) + "\n";
     msg += "Lon: " + String(longitude, 6) + "\n";
-    if (!locationFromLBS) {
+    if (gpsFixed) {
       msg += "Alt: " + String(altitude, 1) + "m\n";
     }
     msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";

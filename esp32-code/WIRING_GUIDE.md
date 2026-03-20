@@ -1,5 +1,19 @@
 # ESP32 Disaster Response Bag - Wiring Guide
 
+## YOUR ACTUAL WIRING SETUP ✓
+
+Your current configuration is **correct and optimal**:
+
+| Component Group | Ground Connection | Voltage |
+|-----------------|------------------|---------|
+| **Heavy Power** (Air780e, GPS, OLED) | Buck Converter OUT- | 5V or 3.3V |
+| **Logic** (Buttons, LED, Piezo) | ESP32 GND | 3.3V signal |
+| **Final Connection** | Battery GND | Combined |
+
+This is a **professional setup** - power-hungry components use the buck converter's robust ground, while logic components use the ESP32 ground. Both paths connect to the battery ground, ensuring proper ground continuity.
+
+---
+
 ## New in v2.0: WiFi Configuration Portal
 
 You no longer need to edit code to change recipients! 

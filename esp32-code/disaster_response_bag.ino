@@ -1051,7 +1051,7 @@ void handleConfigButton() {
 }
 
 void handleStressButton() {
-  Serial.println("\n[STRESS] Stress signal sent\n");
+  Serial.println("\n[STRESS] Button pressed - Stress signal\n");
   playStressSignal();
   
   currentState = STATE_SENDING_ALERT;
@@ -1063,13 +1063,13 @@ void handleStressButton() {
       display.drawStr(0, 20, "Using last known");
       display.drawStr(0, 35, "location");
       display.sendBuffer();
-      delay(1500);
+      delay(500);
     } else {
       display.clearBuffer();
       display.drawStr(0, 20, "No location");
       display.drawStr(0, 35, "available");
       display.sendBuffer();
-      delay(1500);
+      delay(500);
     }
   }
   
@@ -1079,8 +1079,12 @@ void handleStressButton() {
   display.drawStr(0, 48, "SIGNAL");
   display.sendBuffer();
   display.setFont(u8g2_font_6x10_tf);
+  delay(1000);
   
+  Serial.println("[STRESS] Building message...");
   String message = buildStressMessage();
+  
+  Serial.println("[STRESS] Sending to recipients...");
   bool success = sendToAllRecipients(message);
   
   if (success) {
@@ -1089,20 +1093,21 @@ void handleStressButton() {
     display.clearBuffer();
     display.drawStr(10, 30, "SENT!");
     display.sendBuffer();
-    delay(1500);
+    delay(1000);
   } else {
-    Serial.println("[STRESS] Failed to send!");
+    Serial.println("[STRESS] Failed to send or no LTE!");
     display.clearBuffer();
-    display.drawStr(0, 30, "FAILED!");
+    display.drawStr(0, 20, "FAILED!");
+    display.drawStr(0, 35, "Check LTE");
     display.sendBuffer();
-    delay(1500);
+    delay(1000);
   }
   
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
 }
 
 void handleSafeButton() {
-  Serial.println("\n[SAFE] I'm safe signal sent\n");
+  Serial.println("\n[SAFE] Button pressed - I'm safe\n");
   playSafeSignal();
   
   currentState = STATE_SENDING_ALERT;
@@ -1114,13 +1119,13 @@ void handleSafeButton() {
       display.drawStr(0, 20, "Using last known");
       display.drawStr(0, 35, "location");
       display.sendBuffer();
-      delay(1500);
+      delay(500);
     } else {
       display.clearBuffer();
       display.drawStr(0, 20, "No location");
       display.drawStr(0, 35, "available");
       display.sendBuffer();
-      delay(1500);
+      delay(500);
     }
   }
   
@@ -1130,8 +1135,12 @@ void handleSafeButton() {
   display.drawStr(20, 48, "SAFE");
   display.sendBuffer();
   display.setFont(u8g2_font_6x10_tf);
+  delay(1000);
   
+  Serial.println("[SAFE] Building message...");
   String message = buildStatusMessage();
+  
+  Serial.println("[SAFE] Sending to recipients...");
   bool success = sendToAllRecipients(message);
   
   if (success) {
@@ -1139,13 +1148,14 @@ void handleSafeButton() {
     display.clearBuffer();
     display.drawStr(10, 30, "SENT!");
     display.sendBuffer();
-    delay(1500);
+    delay(1000);
   } else {
-    Serial.println("[SAFE] Failed to send!");
+    Serial.println("[SAFE] Failed to send or no LTE!");
     display.clearBuffer();
-    display.drawStr(0, 30, "FAILED!");
+    display.drawStr(0, 20, "FAILED!");
+    display.drawStr(0, 35, "Check LTE");
     display.sendBuffer();
-    delay(1500);
+    delay(1000);
   }
   
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
@@ -1153,22 +1163,25 @@ void handleSafeButton() {
 
 // Button 2: Hold = Piezo Buzzer, Tap = Stable Light, Double Tap = SOS
 void handlePiezoBuzzer() {
-  Serial.println("\n[PIEZO] Buzzer held\n");
+  Serial.println("\n[PIEZO] Button held - Playing buzzer\n");
   playSOSSignal();
+  Serial.println("[PIEZO] Buzzer complete\n");
 }
 
 void handleStableLightButton() {
-  Serial.println("\n[LIGHT] Stable light activated\n");
+  Serial.println("\n[LIGHT] Button tapped - Light ON\n");
   setLEDOn();
   
   display.clearBuffer();
   display.drawStr(0, 30, "Light ON");
   display.sendBuffer();
   delay(1000);
+  
+  Serial.println("[LIGHT] LED activated\n");
 }
 
 void handleSOSButton() {
-  Serial.println("\n[SOS] Emergency SOS activated!\n");
+  Serial.println("\n[SOS] Button double-tapped - Emergency SOS!\n");
   
   currentState = STATE_SENDING_ALERT;
   
@@ -1179,13 +1192,13 @@ void handleSOSButton() {
       display.drawStr(0, 20, "Using last known");
       display.drawStr(0, 35, "location");
       display.sendBuffer();
-      delay(1500);
+      delay(500);
     } else {
       display.clearBuffer();
       display.drawStr(0, 20, "No location");
       display.drawStr(0, 35, "available");
       display.sendBuffer();
-      delay(1500);
+      delay(500);
     }
   }
   
@@ -1196,27 +1209,32 @@ void handleSOSButton() {
   display.setFont(u8g2_font_6x10_tf);
   
   // Play SOS pattern continuously
+  Serial.println("[SOS] Playing SOS signal...");
   for (int i = 0; i < 3; i++) {
     playSOSSignal();
-    delay(500);
+    delay(300);
   }
   
+  Serial.println("[SOS] Building message...");
   String message = buildAlertMessage();
+  
+  Serial.println("[SOS] Sending emergency alert...");
   bool success = sendToAllRecipients(message);
   
   if (success) {
     alertCount++;
-    Serial.println("[SOS] Alert sent successfully!");
+    Serial.println("[SOS] Emergency alert sent successfully!");
     display.clearBuffer();
     display.drawStr(10, 30, "SENT!");
     display.sendBuffer();
-    delay(1500);
+    delay(1000);
   } else {
-    Serial.println("[SOS] Failed to send!");
+    Serial.println("[SOS] Failed to send or no LTE!");
     display.clearBuffer();
-    display.drawStr(0, 30, "FAILED!");
+    display.drawStr(0, 20, "FAILED!");
+    display.drawStr(0, 35, "Check LTE");
     display.sendBuffer();
-    delay(1500);
+    delay(1000);
   }
   
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;

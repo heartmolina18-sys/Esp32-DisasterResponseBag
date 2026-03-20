@@ -1069,24 +1069,20 @@ void handleStressButton() {
   
   currentState = STATE_SENDING_ALERT;
   
-  // If no GPS fix, try cell tower location, then last known
+  // If no GPS fix, try last known location
   if (!gpsFixed) {
-    display.clearBuffer();
-    display.drawStr(0, 20, "No GPS signal");
-    display.drawStr(0, 35, "Getting cell tower");
-    display.drawStr(0, 50, "location...");
-    display.sendBuffer();
-    
-    // Try cell tower location
-    if (!getCellTowerLocation()) {
-      // If cell tower fails, try last known location
-      if (useLastKnownLocation()) {
-        display.clearBuffer();
-        display.drawStr(0, 20, "Using last known");
-        display.drawStr(0, 35, "location");
-        display.sendBuffer();
-        delay(1500);
-      }
+    if (useLastKnownLocation()) {
+      display.clearBuffer();
+      display.drawStr(0, 20, "Using last known");
+      display.drawStr(0, 35, "location");
+      display.sendBuffer();
+      delay(1500);
+    } else {
+      display.clearBuffer();
+      display.drawStr(0, 20, "No location");
+      display.drawStr(0, 35, "available");
+      display.sendBuffer();
+      delay(1500);
     }
   }
   
@@ -1124,24 +1120,20 @@ void handleSafeButton() {
   
   currentState = STATE_SENDING_ALERT;
   
-  // If no GPS fix, try cell tower location, then last known
+  // If no GPS fix, try last known location
   if (!gpsFixed) {
-    display.clearBuffer();
-    display.drawStr(0, 20, "No GPS signal");
-    display.drawStr(0, 35, "Getting cell tower");
-    display.drawStr(0, 50, "location...");
-    display.sendBuffer();
-    
-    // Try cell tower location
-    if (!getCellTowerLocation()) {
-      // If cell tower fails, try last known location
-      if (useLastKnownLocation()) {
-        display.clearBuffer();
-        display.drawStr(0, 20, "Using last known");
-        display.drawStr(0, 35, "location");
-        display.sendBuffer();
-        delay(1500);
-      }
+    if (useLastKnownLocation()) {
+      display.clearBuffer();
+      display.drawStr(0, 20, "Using last known");
+      display.drawStr(0, 35, "location");
+      display.sendBuffer();
+      delay(1500);
+    } else {
+      display.clearBuffer();
+      display.drawStr(0, 20, "No location");
+      display.drawStr(0, 35, "available");
+      display.sendBuffer();
+      delay(1500);
     }
   }
   
@@ -1193,24 +1185,20 @@ void handleSOSButton() {
   
   currentState = STATE_SENDING_ALERT;
   
-  // If no GPS fix, try cell tower location, then last known
+  // If no GPS fix, try last known location
   if (!gpsFixed) {
-    display.clearBuffer();
-    display.drawStr(0, 20, "No GPS signal");
-    display.drawStr(0, 35, "Getting cell tower");
-    display.drawStr(0, 50, "location...");
-    display.sendBuffer();
-    
-    // Try cell tower location
-    if (!getCellTowerLocation()) {
-      // If cell tower fails, try last known location
-      if (useLastKnownLocation()) {
-        display.clearBuffer();
-        display.drawStr(0, 20, "Using last known");
-        display.drawStr(0, 35, "location");
-        display.sendBuffer();
-        delay(1500);
-      }
+    if (useLastKnownLocation()) {
+      display.clearBuffer();
+      display.drawStr(0, 20, "Using last known");
+      display.drawStr(0, 35, "location");
+      display.sendBuffer();
+      delay(1500);
+    } else {
+      display.clearBuffer();
+      display.drawStr(0, 20, "No location");
+      display.drawStr(0, 35, "available");
+      display.sendBuffer();
+      delay(1500);
     }
   }
   

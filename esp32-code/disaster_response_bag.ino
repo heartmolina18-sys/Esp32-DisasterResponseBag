@@ -302,20 +302,16 @@ void loop() {
         button1TapCount = 1;
       }
       button1LastTapTime = millis();
-      
-      if (button1TapCount == 1) {
-        // Wait to see if double tap happens
-        delay(DOUBLE_TAP_WINDOW);
-        if (button1TapCount == 1) {
-          // Single tap - Stress signal
-          handleStressButton();
-        }
-      } else if (button1TapCount >= 2) {
-        // Double tap - I'm safe
-        handleSafeButton();
-        button1TapCount = 0;
-      }
     }
+  }
+  
+  // Check if double-tap window has expired for button 1
+  if (button1TapCount == 1 && (millis() - button1LastTapTime >= DOUBLE_TAP_WINDOW)) {
+    handleStressButton();
+    button1TapCount = 0;
+  } else if (button1TapCount >= 2) {
+    handleSafeButton();
+    button1TapCount = 0;
   }
 
   // ========== BUTTON 2 HANDLING (Piezo/Light/SOS) ==========
@@ -336,20 +332,16 @@ void loop() {
         button2TapCount = 1;
       }
       button2LastTapTime = millis();
-      
-      if (button2TapCount == 1) {
-        // Wait to see if double tap happens
-        delay(DOUBLE_TAP_WINDOW);
-        if (button2TapCount == 1) {
-          // Single tap - Stable light (LED on)
-          handleStableLightButton();
-        }
-      } else if (button2TapCount >= 2) {
-        // Double tap - SOS signal (light + piezo)
-        handleSOSButton();
-        button2TapCount = 0;
-      }
     }
+  }
+  
+  // Check if double-tap window has expired for button 2
+  if (button2TapCount == 1 && (millis() - button2LastTapTime >= DOUBLE_TAP_WINDOW)) {
+    handleStableLightButton();
+    button2TapCount = 0;
+  } else if (button2TapCount >= 2) {
+    handleSOSButton();
+    button2TapCount = 0;
   }
 
   // Update display

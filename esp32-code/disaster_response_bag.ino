@@ -299,6 +299,10 @@ void loop() {
     button1Released = false;
     button1Pressed = false;
     
+    // Clear any spurious config button signals when Button 1 is used
+    configButtonPressed = false;
+    configButtonReleased = false;
+    
     // Always treat as tap (no long press action)
     if (millis() - button1LastTapTime < DOUBLE_TAP_WINDOW) {
       button1TapCount++;
@@ -340,32 +344,29 @@ void loop() {
     configButtonReleased = false;
   }
   
-  // Check if button was released (end of press)
-  if (configButtonReleased) {
+  // Check if button was released (end of press) - require both flags set
+  if (configButtonReleased && configButtonPressed) {
     configButtonReleased = false;
+    configButtonPressed = false;
     
     unsigned long pressDuration = configButtonReleaseTime - configButtonPressTime;
     
-    if (pressDuration >= LONG_PRESS_TIME) {
-      // Hold for 2+ seconds = Enter config mode
-      Serial.println("\n[CONFIG] Config Button held -> Entering config mode\n");
-      enterConfigMode();
-    } else {
-      // Tap = Restart device
-      Serial.println("\n[CONFIG] Config Button tapped -> Restart device\n");
-      display.clearBuffer();
-      display.drawStr(15, 30, "Restarting...");
-      display.sendBuffer();
-      delay(1000);
-      ESP.restart();
+    // Validate press duration is reasonable (not negative or extremely large)
+    if (pressDuration > 0 && pressDuration < 30000) {
+      if (pressDuration >= LONG_PRESS_TIME) {
+        // Hold for 2+ seconds = Enter config mode
+        Serial.println("\n[CONFIG] Config Button held -> Entering config mode\n");
+        enterConfigMode();
+      } else {
+        // Tap = Restart device
+        Serial.println("\n[CONFIG] Config Button tapped -> Restart device\n");
+        display.clearBuffer();
+        display.drawStr(15, 30, "Restarting...");
+        display.sendBuffer();
+        delay(1000);
+        ESP.restart();
+      }
     }
-  }
-  
-  // Reset pressed flag when button is released
-  if (!digitalRead(CONFIG_BUTTON_PIN)) {
-    // Button is currently pressed
-  } else {
-    configButtonPressed = false;
   }
 
   // Update display

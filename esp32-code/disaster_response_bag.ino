@@ -157,7 +157,7 @@ unsigned long configButtonPressTime = 0;
 unsigned long configButtonReleaseTime = 0;
 unsigned long lastConfigButtonDebounceTime = 0;
 
-#define DOUBLE_TAP_WINDOW 500  // 500ms to detect double tap
+#define DOUBLE_TAP_WINDOW 800  // 800ms to detect double tap
 // Note: LONG_PRESS_TIME is defined in PIN DEFINITIONS section
 
 // Battery Monitoring

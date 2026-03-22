@@ -63,12 +63,12 @@
 #define SCREEN_WIDTH   128
 #define SCREEN_HEIGHT  64
 
-// Emergency Button
-#define BUTTON_PIN     32
+// Emergency Button (GPIO 33)
+#define BUTTON_PIN     33
 #define DEBOUNCE_DELAY 50
 
-// Config Mode Button (separate button)
-#define CONFIG_BUTTON_PIN  33
+// Config Mode Button (GPIO 32)
+#define CONFIG_BUTTON_PIN  32
 
 // Piezo Buzzer (piezo speaker)
 #define PIEZO_PIN      13
@@ -434,13 +434,7 @@ void IRAM_ATTR configButtonISR() {
 bool checkConfigMode() {
   Serial.println("[CONFIG] Checking for config mode...");
   
-  // Debug: Check both button states
-  int button1State = digitalRead(BUTTON_PIN);
-  int configButtonState = digitalRead(CONFIG_BUTTON_PIN);
-  Serial.print("[v0] Button 1 (GPIO 33) state: ");
-  Serial.println(button1State);
-  Serial.print("[v0] Config Button (GPIO 32) state: ");
-  Serial.println(configButtonState);
+  // Check if config button is pressed on boot
   
   // Check if config button is pressed on boot
   if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {

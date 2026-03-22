@@ -64,11 +64,11 @@
 #define SCREEN_HEIGHT  64
 
 // Emergency Button
-#define BUTTON_PIN     33
+#define BUTTON_PIN     32
 #define DEBOUNCE_DELAY 50
 
 // Config Mode Button (separate button)
-#define CONFIG_BUTTON_PIN  32
+#define CONFIG_BUTTON_PIN  33
 
 // Piezo Buzzer (piezo speaker)
 #define PIEZO_PIN      13

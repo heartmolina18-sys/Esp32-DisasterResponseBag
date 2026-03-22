@@ -291,14 +291,20 @@ void loop() {
     button1Pressed = false;
     
     unsigned long pressDuration = button1ReleaseTime - button1PressTime;
+    Serial.print("[v0] Button 1 press duration: ");
+    Serial.print(pressDuration);
+    Serial.println(" ms");
     
     if (pressDuration >= LONG_PRESS_TIME) {
       // Hold button for configuration
+      Serial.println("[v0] Long press detected -> Config Mode");
       handleConfigButton();
     } else {
       // Tap detected - check for double tap
+      Serial.println("[v0] Short tap detected");
       if (millis() - button1LastTapTime < DOUBLE_TAP_WINDOW) {
         button1TapCount++;
+        Serial.println("[v0] Double tap counting...");
       } else {
         button1TapCount = 1;
       }

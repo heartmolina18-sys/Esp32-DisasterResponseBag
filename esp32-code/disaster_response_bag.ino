@@ -51,6 +51,7 @@
 #define GPS_RX_PIN   16
 #define GPS_TX_PIN   17
 #define GPS_BAUD     9600
+#define TIMEZONE_OFFSET 8  // Philippines is UTC+8
 
 // 4G Module (Air780e) - Using Software Serial on these pins
 #define LTE_RX_PIN   26
@@ -1108,7 +1109,9 @@ void updateGPS() {
 
   if (gps.time.isValid()) {
     char timeStr[12];
-    sprintf(timeStr, "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+    // Apply timezone offset (GPS gives UTC time)
+    int localHour = (gps.time.hour() + TIMEZONE_OFFSET) % 24;
+    sprintf(timeStr, "%02d:%02d:%02d", localHour, gps.time.minute(), gps.time.second());
     gpsTime = String(timeStr);
   }
 

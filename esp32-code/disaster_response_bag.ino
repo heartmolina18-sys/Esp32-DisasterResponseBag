@@ -70,7 +70,7 @@
 #define CONFIG_BUTTON_PIN  32
 
 // LED Indicator
-#define LED_PIN        2
+// LED removed - no longer using
 
 // Piezo Buzzer (piezo speaker)
 #define PIEZO_PIN      13
@@ -210,10 +210,6 @@ void setup() {
   Serial.println("Emergency Alert System v2.0");
   Serial.println("========================================\n");
 
-  // Initialize LED
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
-
   // Initialize Piezo Buzzer
   pinMode(PIEZO_PIN, OUTPUT);
   digitalWrite(PIEZO_PIN, LOW);
@@ -338,36 +334,8 @@ void loop() {
     runSOSPattern();
   }
 
-  // ========== CONFIG BUTTON HANDLING (GPIO 32) ==========
-  if (configButtonReleased && configButtonPressed) {
-    configButtonReleased = false;
-    configButtonPressed = false;
-    
-    unsigned long pressDuration = configButtonReleaseTime - configButtonPressTime;
-    Serial.print("[v0] Config Button press duration: ");
-    Serial.print(pressDuration);
-    Serial.println(" ms");
-    
-    if (pressDuration >= LONG_PRESS_TIME) {
-      // Hold for 2+ seconds = Enter config mode
-      Serial.println("\n[CONFIG] Config Button held -> Entering config mode\n");
-      enterConfigMode();
-    } else {
-      // Tap = Exit config mode (if in it) or restart device
-      Serial.println("\n[CONFIG] Config Button tapped -> Restart device\n");
-      display.clearBuffer();
-      display.drawStr(15, 30, "Restarting...");
-      display.sendBuffer();
-      delay(1000);
-      ESP.restart();
-    }
-  }
-
   // Update display
   updateDisplay();
-
-  // Blink LED based on state
-  updateLED();
 
   delay(10);
 }
@@ -480,14 +448,14 @@ void startConfigMode() {
   while (configMode) {
     server.handleClient();
     
-    // Blink LED to indicate config mode
-    static unsigned long lastBlink = 0;
-    static bool ledState = false;
-    if (millis() - lastBlink > 500) {
-      lastBlink = millis();
-      ledState = !ledState;
-      digitalWrite(LED_PIN, ledState);
-    }
+    // Blink LED to indicate config mode - REMOVED (no LED)
+    // static unsigned long lastBlink = 0;
+    // static bool ledState = false;
+    // if (millis() - lastBlink > 500) {
+    //   lastBlink = millis();
+    //   ledState = !ledState;
+    //   digitalWrite(LED_PIN, ledState);
+    // }
     
     // Check for Config Button tap to exit
     if (configButtonReleased && configButtonPressed) {
@@ -1709,9 +1677,10 @@ void playSOSSignal() {
 }
 
 // LED control functions
-void setLEDOn() {
-  digitalWrite(LED_PIN, HIGH);
-}
+// LED Functions - REMOVED (no LED in project)
+// void setLEDOn() {
+// void setLEDOff() {
+// void updateLED() {
 
 void setLEDOff() {
   digitalWrite(LED_PIN, LOW);

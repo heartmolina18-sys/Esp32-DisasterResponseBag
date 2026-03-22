@@ -136,21 +136,30 @@ double lastKnownLon = 0.0;
 unsigned long lastLocationUpdate = 0;
 bool hasLastKnownLocation = false;
 
-// Button 1 State (Config/Stress/Safe)
-volatile bool button1Pressed = false;
-volatile unsigned long button1PressTime = 0;
-volatile unsigned long button1ReleaseTime = 0;
-volatile bool button1Released = false;
-unsigned long lastButton1DebounceTime = 0;
+// Button 1 State (Stress/Safe - no config mode)
+bool button1Pressed = false;
+bool button1Released = false;
+unsigned long button1PressTime = 0;
+unsigned long button1ReleaseTime = 0;
 int button1TapCount = 0;
 unsigned long button1LastTapTime = 0;
+unsigned long lastButton1DebounceTime = 0;
 
-// Button 2 State (Piezo/Light/SOS)
-volatile bool button2Pressed = false;
-volatile unsigned long button2PressTime = 0;
-volatile unsigned long button2ReleaseTime = 0;
-volatile bool button2Released = false;
+// Button 2 State (Piezo SOS alarm)
+bool button2Pressed = false;
+bool button2Released = false;
+unsigned long button2PressTime = 0;
+unsigned long button2ReleaseTime = 0;
+int button2TapCount = 0;
+unsigned long button2LastTapTime = 0;
 unsigned long lastButton2DebounceTime = 0;
+
+// Config Button State (GPIO 32) - Hold for config, Tap to exit
+bool configButtonPressed = false;
+bool configButtonReleased = false;
+unsigned long configButtonPressTime = 0;
+unsigned long configButtonReleaseTime = 0;
+unsigned long lastConfigButtonDebounceTime = 0;
 int button2TapCount = 0;
 unsigned long button2LastTapTime = 0;
 
@@ -185,6 +194,7 @@ int alertCount = 0;
 // Button ISR functions (defined later in code)
 void IRAM_ATTR button1ISR();
 void IRAM_ATTR button2ISR();
+void IRAM_ATTR configButtonISR();
 
 // ==================== MAIN CODE ====================
 
@@ -246,6 +256,9 @@ void setup() {
   
   // Button 2 interrupt (CHANGE mode to detect both press and release)
   attachInterrupt(digitalPinToInterrupt(BUTTON2_PIN), button2ISR, CHANGE);
+  
+  // Config Button interrupt (CHANGE mode to detect both press and release)
+  attachInterrupt(digitalPinToInterrupt(CONFIG_BUTTON_PIN), configButtonISR, CHANGE);
 
   // Initialize GPS Module
   initGPS();
@@ -285,7 +298,7 @@ void loop() {
   // Update battery level
   updateBattery();
 
-  // ========== BUTTON 1 HANDLING (Config/Stress/Safe) ==========
+  // ========== BUTTON 1 HANDLING (Stress/Safe only) ==========
   if (button1Released && button1Pressed) {
     button1Released = false;
     button1Pressed = false;
@@ -295,21 +308,15 @@ void loop() {
     Serial.print(pressDuration);
     Serial.println(" ms");
     
-    if (pressDuration >= LONG_PRESS_TIME) {
-      // Hold button for configuration
-      Serial.println("[v0] Long press detected -> Config Mode");
-      handleConfigButton();
+    // Always treat as tap (no long press action)
+    Serial.println("[v0] Short tap detected");
+    if (millis() - button1LastTapTime < DOUBLE_TAP_WINDOW) {
+      button1TapCount++;
+      Serial.println("[v0] Double tap counting...");
     } else {
-      // Tap detected - check for double tap
-      Serial.println("[v0] Short tap detected");
-      if (millis() - button1LastTapTime < DOUBLE_TAP_WINDOW) {
-        button1TapCount++;
-        Serial.println("[v0] Double tap counting...");
-      } else {
-        button1TapCount = 1;
-      }
-      button1LastTapTime = millis();
+      button1TapCount = 1;
     }
+    button1LastTapTime = millis();
   }
   
   // Check if double-tap window has expired for button 1
@@ -331,6 +338,28 @@ void loop() {
   // Run continuous SOS pattern while piezo is active (non-blocking)
   if (piezoActive) {
     runSOSPattern();
+  }
+
+  // ========== CONFIG BUTTON HANDLING (GPIO 32) ==========
+  if (configButtonReleased && configButtonPressed) {
+    configButtonReleased = false;
+    configButtonPressed = false;
+    
+    unsigned long pressDuration = configButtonReleaseTime - configButtonPressTime;
+    
+    if (pressDuration >= LONG_PRESS_TIME) {
+      // Hold for 2+ seconds = Enter config mode
+      Serial.println("\n[CONFIG] Config Button held -> Entering config mode\n");
+      enterConfigMode();
+    } else {
+      // Tap = Exit config mode (if in it) or restart device
+      Serial.println("\n[CONFIG] Config Button tapped -> Restart device\n");
+      display.clearBuffer();
+      display.drawStr(15, 30, "Restarting...");
+      display.sendBuffer();
+      delay(1000);
+      ESP.restart();
+    }
   }
 
   // Update display
@@ -375,6 +404,23 @@ void IRAM_ATTR button2ISR() {
       button2Released = true;
     }
     lastButton2DebounceTime = millis();
+  }
+}
+
+// Config Button ISR (GPIO 32) - handles both press and release
+void IRAM_ATTR configButtonISR() {
+  if ((millis() - lastConfigButtonDebounceTime) > DEBOUNCE_DELAY) {
+    int state = digitalRead(CONFIG_BUTTON_PIN);
+    if (state == LOW) {
+      // Button pressed (pulled LOW)
+      configButtonPressTime = millis();
+      configButtonPressed = true;
+    } else {
+      // Button released (pulled HIGH)
+      configButtonReleaseTime = millis();
+      configButtonReleased = true;
+    }
+    lastConfigButtonDebounceTime = millis();
   }
 }
 
@@ -1042,6 +1088,17 @@ void updateGPS() {
 // ==================== BUTTON HANDLER FUNCTIONS ====================
 
 // Button 1: Hold = Config, Tap = Stress, Double Tap = I'm Safe
+// Enter config mode - can be called anytime, not just at boot
+void enterConfigMode() {
+  Serial.println("\n[CONFIG] Entering configuration mode\n");
+  display.clearBuffer();
+  display.drawStr(0, 20, "Entering config");
+  display.drawStr(0, 35, "mode...");
+  display.sendBuffer();
+  delay(1000);
+  startConfigMode();  // Start the config WiFi AP
+}
+
 void handleConfigButton() {
   Serial.println("\n[CONFIG] Configuration button held\n");
   display.clearBuffer();

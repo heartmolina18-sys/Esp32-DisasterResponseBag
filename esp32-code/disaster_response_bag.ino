@@ -1391,7 +1391,7 @@ String buildStressMessage() {
     msg += "Location: Not available\n\n";
   }
   
-  msg += "Battery: " + String(batteryPercent) + "% (" + String(batteryVoltage, 2) + "V)\n";
+
   msg += "Time: " + gpsTime + "\n";
   msg += "Date: " + gpsDate;
   
@@ -1426,7 +1426,7 @@ String buildStatusMessage() {
     msg += "Location: Not available\n\n";
   }
   
-  msg += "Battery: " + String(batteryPercent) + "% (" + String(batteryVoltage, 2) + "V)\n";
+
   msg += "Time: " + gpsTime + "\n";
   msg += "Date: " + gpsDate;
   
@@ -1462,7 +1462,7 @@ String buildAlertMessage() {
     msg += "Location: Not available\n\n";
   }
   
-  msg += "Battery: " + String(batteryPercent) + "% (" + String(batteryVoltage, 2) + "V)\n";
+
   msg += "Time: " + gpsTime + "\n";
   msg += "Date: " + gpsDate + "\n";
   msg += "Alert #" + String(alertCount + 1);

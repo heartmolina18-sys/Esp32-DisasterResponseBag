@@ -162,43 +162,53 @@ void getLocationFromMozilla(String jsonData) {
   // Check bearer status before HTTP init
   Serial.println("[HTTP] Checking bearer status...");
   LTESerial.println("AT+SAPBR=2,1");
-  delay(500);
+  delay(1000);  // Wait longer
   String bearerStatus = "";
-  while (LTESerial.available()) {
+  unsigned long readStart = millis();
+  while (millis() - readStart < 2000 && LTESerial.available()) {
     bearerStatus += (char)LTESerial.read();
   }
-  Serial.println("[HTTP] Bearer status response: " + bearerStatus);
+  Serial.println("[HTTP] Bearer status: " + bearerStatus);
   
-  // Open bearer if needed
-  Serial.println("[HTTP] Opening bearer...");
-  sendATCommand("AT+SAPBR=1,1", "OK", 5000);
-  
-  delay(1000);
-  
-  // Initialize HTTP service with better error checking
-  Serial.println("[HTTP] Initializing HTTP service...");
-  LTESerial.println("AT+HTTPINIT");
-  delay(2000);
-  
-  String httpInitResponse = "";
-  while (LTESerial.available()) {
-    httpInitResponse += (char)LTESerial.read();
+  if (bearerStatus.indexOf("1,1,1") == -1) {
+    Serial.println("[WARNING] Bearer may not be properly connected, trying to reconnect...");
+    sendATCommand("AT+SAPBR=0,1", "OK", 2000);  // Close bearer
+    delay(1000);
+    sendATCommand("AT+SAPBR=1,1", "OK", 10000);  // Open again
   }
   
-  Serial.println("[HTTP] HTTP init response: " + httpInitResponse);
+  delay(2000);
   
-  if (httpInitResponse.indexOf("OK") == -1) {
-    Serial.println("[ERROR] HTTP init failed - response doesn't contain OK");
-    Serial.println("[ERROR] Full response was: [" + httpInitResponse + "]");
+  // Initialize HTTP service with longer timeout
+  Serial.println("[HTTP] Initializing HTTP service...");
+  while (LTESerial.available()) LTESerial.read();  // Clear buffer
+  
+  LTESerial.println("AT+HTTPINIT");
+  delay(3000);  // Wait 3 seconds
+  
+  String httpInitResponse = "";
+  readStart = millis();
+  while (millis() - readStart < 3000) {
+    if (LTESerial.available()) {
+      httpInitResponse += (char)LTESerial.read();
+    }
+  }
+  
+  Serial.println("[HTTP] HTTP init response (raw): [" + httpInitResponse + "]");
+  Serial.println("[HTTP] Response length: " + String(httpInitResponse.length()));
+  
+  if (httpInitResponse.length() == 0) {
+    Serial.println("[ERROR] No response from HTTP init - module may be unresponsive");
+    // Try to recover
     sendATCommand("AT+HTTPTERM", "OK", 1000);
     return;
   }
   
-  // Set HTTP parameters
-  Serial.println("[HTTP] Setting HTTP parameters...");
-  sendATCommand("AT+HTTPPARA=\"CID\",1", "OK", 1000);
-  sendATCommand("AT+HTTPPARA=\"REDIR\",0", "OK", 1000);  // Disable redirect
-  sendATCommand("AT+HTTPSSL=1", "OK", 1000);
+  if (httpInitResponse.indexOf("OK") == -1) {
+    Serial.println("[ERROR] HTTP init failed");
+    sendATCommand("AT+HTTPTERM", "OK", 1000);
+    return;
+  }
   
   // Set URL
   String urlCmd = "AT+HTTPPARA=\"URL\",\"https://" + String(apiHost) + String(apiPath) + "\"";

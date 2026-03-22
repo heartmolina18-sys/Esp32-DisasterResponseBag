@@ -280,9 +280,10 @@ void setup() {
 // ==================== MAIN LOOP ====================
 
 void loop() {
+  // Config mode is handled inside startConfigMode() with its own loop
+  // This check is just a safety - shouldn't reach here if in config mode
   if (configMode) {
     server.handleClient();
-    updateConfigDisplay();
     return;
   }
 
@@ -1678,51 +1679,6 @@ void playSOSSignal() {
 
 // LED control functions
 // LED Functions - REMOVED (no LED in project)
-// void setLEDOn() {
-// void setLEDOff() {
-// void updateLED() {
-
-void setLEDOff() {
-  digitalWrite(LED_PIN, LOW);
-}
-
-void setLEDPulse(int intervalMs) {
-  static unsigned long lastPulse = 0;
-  static bool ledState = false;
-  
-  if (millis() - lastPulse >= intervalMs) {
-    lastPulse = millis();
-    ledState = !ledState;
-    digitalWrite(LED_PIN, ledState);
-  }
-}
-
-void updateLED() {
-  static unsigned long lastBlink = 0;
-  static bool ledState = false;
-  
-  unsigned long blinkInterval;
-  
-  switch (currentState) {
-    case STATE_WAITING_GPS:
-      blinkInterval = 1000;
-      break;
-    case STATE_READY:
-      blinkInterval = 2000;
-      break;
-    case STATE_SENDING_ALERT:
-      blinkInterval = 100;
-      break;
-    default:
-      blinkInterval = 500;
-  }
-  
-  if (millis() - lastBlink >= blinkInterval) {
-    lastBlink = millis();
-    ledState = !ledState;
-    digitalWrite(LED_PIN, ledState);
-  }
-}
 
 // ==================== UTILITY FUNCTIONS ====================
 

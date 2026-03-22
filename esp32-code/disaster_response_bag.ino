@@ -473,19 +473,45 @@ void startConfigMode() {
   display.drawStr(0, 26, "WiFi: DisasterBag-Setup");
   display.drawStr(0, 38, "Pass: disaster123");
   display.drawStr(0, 52, "Go to: 192.168.4.1");
+  display.drawStr(0, 62, "Tap Cfg Btn to Exit");
   display.sendBuffer();
+
+  // Config mode loop - handles web server and checks for exit
+  while (configMode) {
+    server.handleClient();
+    
+    // Blink LED to indicate config mode
+    static unsigned long lastBlink = 0;
+    static bool ledState = false;
+    if (millis() - lastBlink > 500) {
+      lastBlink = millis();
+      ledState = !ledState;
+      digitalWrite(LED_PIN, ledState);
+    }
+    
+    // Check for Config Button tap to exit
+    if (configButtonReleased && configButtonPressed) {
+      configButtonReleased = false;
+      configButtonPressed = false;
+      
+      Serial.println("[CONFIG] Config Button pressed - Exiting config mode and restarting...");
+      display.clearBuffer();
+      display.drawStr(15, 30, "Restarting...");
+      display.sendBuffer();
+      delay(1000);
+      
+      // Stop server and WiFi
+      server.stop();
+      WiFi.softAPdisconnect(true);
+      
+      ESP.restart();
+    }
+    
+    delay(10);
+  }
 }
 
-void updateConfigDisplay() {
-  static unsigned long lastUpdate = 0;
-  if (millis() - lastUpdate < 1000) return;
-  lastUpdate = millis();
-
-  // Blink LED to indicate config mode
-  static bool ledState = false;
-  ledState = !ledState;
-  digitalWrite(LED_PIN, ledState);
-}
+// updateConfigDisplay() moved into startConfigMode() loop
 
 // ==================== WEB SERVER HANDLERS ====================
 

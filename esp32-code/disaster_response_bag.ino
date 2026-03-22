@@ -160,8 +160,6 @@ bool configButtonReleased = false;
 unsigned long configButtonPressTime = 0;
 unsigned long configButtonReleaseTime = 0;
 unsigned long lastConfigButtonDebounceTime = 0;
-int button2TapCount = 0;
-unsigned long button2LastTapTime = 0;
 
 #define DOUBLE_TAP_WINDOW 500  // 500ms to detect double tap
 // Note: LONG_PRESS_TIME is defined in PIN DEFINITIONS section
@@ -346,6 +344,9 @@ void loop() {
     configButtonPressed = false;
     
     unsigned long pressDuration = configButtonReleaseTime - configButtonPressTime;
+    Serial.print("[v0] Config Button press duration: ");
+    Serial.print(pressDuration);
+    Serial.println(" ms");
     
     if (pressDuration >= LONG_PRESS_TIME) {
       // Hold for 2+ seconds = Enter config mode
@@ -411,14 +412,19 @@ void IRAM_ATTR button2ISR() {
 void IRAM_ATTR configButtonISR() {
   if ((millis() - lastConfigButtonDebounceTime) > DEBOUNCE_DELAY) {
     int state = digitalRead(CONFIG_BUTTON_PIN);
+    Serial.print("[v0] Config Button ISR - State: ");
+    Serial.println(state == LOW ? "PRESSED" : "RELEASED");
+    
     if (state == LOW) {
       // Button pressed (pulled LOW)
       configButtonPressTime = millis();
       configButtonPressed = true;
+      Serial.println("[v0] configButtonPressed = true");
     } else {
       // Button released (pulled HIGH)
       configButtonReleaseTime = millis();
       configButtonReleased = true;
+      Serial.println("[v0] configButtonReleased = true");
     }
     lastConfigButtonDebounceTime = millis();
   }

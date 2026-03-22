@@ -175,6 +175,7 @@ SystemState currentState = STATE_INITIALIZING;
 
 // Config mode flag
 bool configMode = false;
+bool piezoActive = false;  // Toggle for continuous SOS piezo alarm
 
 // Alert tracking
 unsigned long alertSentTime = 0;
@@ -314,34 +315,16 @@ void loop() {
     button1TapCount = 0;
   }
 
-  // ========== BUTTON 2 HANDLING (Piezo/Light/SOS) ==========
+  // ========== BUTTON 2 HANDLING (Piezo SOS Toggle) ==========
   if (button2Released && button2Pressed) {
     button2Released = false;
     button2Pressed = false;
-    
-    unsigned long pressDuration = button2ReleaseTime - button2PressTime;
-    
-    if (pressDuration >= LONG_PRESS_TIME) {
-      // Hold button - Play piezo sound
-      handlePiezoBuzzer();
-    } else {
-      // Tap detected - check for double tap
-      if (millis() - button2LastTapTime < DOUBLE_TAP_WINDOW) {
-        button2TapCount++;
-      } else {
-        button2TapCount = 1;
-      }
-      button2LastTapTime = millis();
-    }
+    handlePiezoBuzzer();  // Toggle piezo SOS alarm on/off
   }
-  
-  // Check if double-tap window has expired for button 2
-  if (button2TapCount == 1 && (millis() - button2LastTapTime >= DOUBLE_TAP_WINDOW)) {
-    handleStableLightButton();
-    button2TapCount = 0;
-  } else if (button2TapCount >= 2) {
-    handleSOSButton();
-    button2TapCount = 0;
+
+  // Run continuous SOS pattern while piezo is active (non-blocking)
+  if (piezoActive) {
+    runSOSPattern();
   }
 
   // Update display
@@ -1175,83 +1158,73 @@ void handleSafeButton() {
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
 }
 
-// Button 2: Hold = Piezo Buzzer, Tap = Stable Light, Double Tap = SOS
+// Button 2: Tap = Toggle continuous SOS piezo alarm ON/OFF
 void handlePiezoBuzzer() {
-  Serial.println("\n[PIEZO] Button held - Playing buzzer\n");
-  playSOSSignal();
-  Serial.println("[PIEZO] Buzzer complete\n");
+  piezoActive = !piezoActive;  // Toggle alarm state
+
+  if (piezoActive) {
+    Serial.println("\n[PIEZO] SOS Alarm ON\n");
+    display.clearBuffer();
+    display.setFont(u8g2_font_10x20_tf);
+    display.drawStr(10, 30, "ALARM ON");
+    display.sendBuffer();
+    display.setFont(u8g2_font_6x10_tf);
+  } else {
+    Serial.println("\n[PIEZO] SOS Alarm OFF\n");
+    digitalWrite(PIEZO_PIN, LOW);  // Make sure piezo is off
+    display.clearBuffer();
+    display.setFont(u8g2_font_10x20_tf);
+    display.drawStr(8, 30, "ALARM OFF");
+    display.sendBuffer();
+    display.setFont(u8g2_font_6x10_tf);
+    delay(800);
+  }
 }
 
-void handleStableLightButton() {
-  Serial.println("\n[LIGHT] Button tapped - Light ON\n");
-  setLEDOn();
-  
-  display.clearBuffer();
-  display.drawStr(0, 30, "Light ON");
-  display.sendBuffer();
-  delay(1000);
-  
-  Serial.println("[LIGHT] LED activated\n");
-}
+// Non-blocking SOS pattern: ... --- ... (dot=short, dash=long)
+// Runs continuously while piezoActive is true
+unsigned long sosPatternTimer = 0;
+int sosPatternStep = 0;
+// SOS pattern steps: 3 short, 3 long, 3 short, pause
+// Each step: {duration ON, duration OFF}
+const int SOS_STEPS = 14;
+const int sosDurations[14][2] = {
+  {150, 150}, // S dot 1
+  {150, 150}, // S dot 2
+  {150, 300}, // S dot 3
+  {400, 150}, // O dash 1
+  {400, 150}, // O dash 2
+  {400, 300}, // O dash 3
+  {150, 150}, // S dot 1
+  {150, 150}, // S dot 2
+  {150, 150}, // S dot 3
+  {0,  1000}, // Pause between cycles
+};
+const int SOS_ACTUAL_STEPS = 10;
 
-void handleSOSButton() {
-  Serial.println("\n[SOS] Button double-tapped - Emergency SOS!\n");
-  
-  currentState = STATE_SENDING_ALERT;
-  
-  // If no GPS fix, try last known location
-  if (!gpsFixed) {
-    if (useLastKnownLocation()) {
-      display.clearBuffer();
-      display.drawStr(0, 20, "Using last known");
-      display.drawStr(0, 35, "location");
-      display.sendBuffer();
-      delay(500);
-    } else {
-      display.clearBuffer();
-      display.drawStr(0, 20, "No location");
-      display.drawStr(0, 35, "available");
-      display.sendBuffer();
-      delay(500);
+void runSOSPattern() {
+  unsigned long now = millis();
+
+  // ON phase
+  if (sosPatternStep < SOS_ACTUAL_STEPS) {
+    if (sosDurations[sosPatternStep][0] > 0) {
+      if (now - sosPatternTimer < sosDurations[sosPatternStep][0]) {
+        tone(PIEZO_PIN, 1000);  // Beep ON at 1kHz
+        return;
+      }
+      noTone(PIEZO_PIN);  // Beep OFF
+    }
+    // OFF phase
+    if (now - sosPatternTimer < sosDurations[sosPatternStep][0] + sosDurations[sosPatternStep][1]) {
+      return;
+    }
+    // Move to next step
+    sosPatternTimer = now;
+    sosPatternStep++;
+    if (sosPatternStep >= SOS_ACTUAL_STEPS) {
+      sosPatternStep = 0;  // Loop back to start
     }
   }
-  
-  display.clearBuffer();
-  display.setFont(u8g2_font_10x20_tf);
-  display.drawStr(30, 30, "SOS!");
-  display.sendBuffer();
-  display.setFont(u8g2_font_6x10_tf);
-  
-  // Play SOS pattern continuously
-  Serial.println("[SOS] Playing SOS signal...");
-  for (int i = 0; i < 3; i++) {
-    playSOSSignal();
-    delay(300);
-  }
-  
-  Serial.println("[SOS] Building message...");
-  String message = buildAlertMessage();
-  
-  Serial.println("[SOS] Sending emergency alert...");
-  bool success = sendToAllRecipients(message);
-  
-  if (success) {
-    alertCount++;
-    Serial.println("[SOS] Emergency alert sent successfully!");
-    display.clearBuffer();
-    display.drawStr(10, 30, "SENT!");
-    display.sendBuffer();
-    delay(1000);
-  } else {
-    Serial.println("[SOS] Failed to send or no LTE!");
-    display.clearBuffer();
-    display.drawStr(0, 20, "FAILED!");
-    display.drawStr(0, 35, "Check LTE");
-    display.sendBuffer();
-    delay(1000);
-  }
-  
-  currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
 }
 
 bool sendToAllRecipients(String message) {

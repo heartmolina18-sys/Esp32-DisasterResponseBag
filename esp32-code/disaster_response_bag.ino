@@ -151,8 +151,6 @@ bool button2Pressed = false;
 bool button2Released = false;
 unsigned long button2PressTime = 0;
 unsigned long button2ReleaseTime = 0;
-int button2TapCount = 0;
-unsigned long button2LastTapTime = 0;
 unsigned long lastButton2DebounceTime = 0;
 
 // Config Button State (GPIO 32) - Hold for config, Tap to exit
@@ -302,16 +300,9 @@ void loop() {
     button1Released = false;
     button1Pressed = false;
     
-    unsigned long pressDuration = button1ReleaseTime - button1PressTime;
-    Serial.print("[v0] Button 1 press duration: ");
-    Serial.print(pressDuration);
-    Serial.println(" ms");
-    
     // Always treat as tap (no long press action)
-    Serial.println("[v0] Short tap detected");
     if (millis() - button1LastTapTime < DOUBLE_TAP_WINDOW) {
       button1TapCount++;
-      Serial.println("[v0] Double tap counting...");
     } else {
       button1TapCount = 1;
     }
@@ -345,9 +336,6 @@ void loop() {
     configButtonReleased = false;
     
     unsigned long pressDuration = configButtonReleaseTime - configButtonPressTime;
-    Serial.print("[v0] Config Button press duration: ");
-    Serial.print(pressDuration);
-    Serial.println(" ms");
     
     if (pressDuration >= LONG_PRESS_TIME) {
       // Hold for 2+ seconds = Enter config mode
@@ -421,19 +409,15 @@ void IRAM_ATTR button2ISR() {
 void IRAM_ATTR configButtonISR() {
   if ((millis() - lastConfigButtonDebounceTime) > DEBOUNCE_DELAY) {
     int state = digitalRead(CONFIG_BUTTON_PIN);
-    Serial.print("[v0] Config Button ISR - State: ");
-    Serial.println(state == LOW ? "PRESSED" : "RELEASED");
     
     if (state == LOW) {
       // Button pressed (pulled LOW)
       configButtonPressTime = millis();
       configButtonPressed = true;
-      Serial.println("[v0] configButtonPressed = true");
     } else {
       // Button released (pulled HIGH)
       configButtonReleaseTime = millis();
       configButtonReleased = true;
-      Serial.println("[v0] configButtonReleased = true");
     }
     lastConfigButtonDebounceTime = millis();
   }
@@ -489,15 +473,6 @@ void startConfigMode() {
   while (configMode) {
     server.handleClient();
     
-    // Blink LED to indicate config mode - REMOVED (no LED)
-    // static unsigned long lastBlink = 0;
-    // static bool ledState = false;
-    // if (millis() - lastBlink > 500) {
-    //   lastBlink = millis();
-    //   ledState = !ledState;
-    //   digitalWrite(LED_PIN, ledState);
-    // }
-    
     // Check for Config Button tap to exit
     if (configButtonReleased && configButtonPressed) {
       configButtonReleased = false;
@@ -519,8 +494,6 @@ void startConfigMode() {
     delay(10);
   }
 }
-
-// updateConfigDisplay() moved into startConfigMode() loop
 
 // ==================== WEB SERVER HANDLERS ====================
 
@@ -1754,9 +1727,6 @@ void playSOSSignal() {
   
   stopTone();
 }
-
-// LED control functions
-// LED Functions - REMOVED (no LED in project)
 
 // ==================== UTILITY FUNCTIONS ====================
 

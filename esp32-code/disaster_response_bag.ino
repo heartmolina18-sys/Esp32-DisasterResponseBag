@@ -191,12 +191,6 @@ int signalCSQ = 99;
 // Flag to prevent config mode during message sending
 bool sendingMessage = false;
 
-// WiFi Geolocation (Mozilla Ichnaea API - no API key needed!)
-bool wifiLocationAvailable = false;
-double wifiLat = 0.0;
-double wifiLon = 0.0;
-unsigned long lastWifiLocationUpdate = 0;
-
 // ==================== FORWARD DECLARATIONS ====================
 // Button ISR functions (defined later in code)
 void IRAM_ATTR button1ISR();
@@ -380,9 +374,6 @@ void loop() {
 
   // Poll signal strength every 10 seconds
   updateSignalStrength();
-  
-  // Get WiFi geolocation if GPS not available (fallback)
-  getWiFiGeolocation();
 
   delay(10);
 }
@@ -1385,12 +1376,10 @@ String buildStressMessage() {
   msg += "Device: " + String(config.deviceName) + "\n";
   msg += "Status: Under stress or experiencing difficulty\n\n";
   
-  if (gpsFixed || (latitude != 0.0 && longitude != 0.0) || wifiLocationAvailable) {
+  if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
     msg += "Location";
     if (gpsFixed) {
       msg += " (GPS):\n";
-    } else if (wifiLocationAvailable) {
-      msg += " (WiFi):\n";
     } else if (locationFromLBS) {
       msg += " (Cell Tower - approx):\n";
     } else if (hasLastKnownLocation) {
@@ -1400,17 +1389,12 @@ String buildStressMessage() {
     } else {
       msg += ":\n";
     }
-    
-    // Use GPS if available, otherwise use WiFi geolocation
-    double msgLat = gpsFixed ? latitude : wifiLat;
-    double msgLon = gpsFixed ? longitude : wifiLon;
-    
-    msg += "Lat: " + String(msgLat, 6) + "\n";
-    msg += "Lon: " + String(msgLon, 6) + "\n";
+    msg += "Lat: " + String(latitude, 6) + "\n";
+    msg += "Lon: " + String(longitude, 6) + "\n";
     if (gpsFixed) {
       msg += "Alt: " + String(altitude, 1) + "m\n";
     }
-    msg += "\nMaps: https://maps.google.com/?q=" + String(msgLat, 6) + "," + String(msgLon, 6) + "\n\n";
+    msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
   } else {
     msg += "Location: Not available\n\n";
   }
@@ -1428,12 +1412,10 @@ String buildStatusMessage() {
   msg += "Device: " + String(config.deviceName) + "\n";
   msg += "Status: I'm OK\n\n";
   
-  if (gpsFixed || (latitude != 0.0 && longitude != 0.0) || wifiLocationAvailable) {
+  if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
     msg += "Location";
     if (gpsFixed) {
       msg += " (GPS):\n";
-    } else if (wifiLocationAvailable) {
-      msg += " (WiFi):\n";
     } else if (locationFromLBS) {
       msg += " (Cell Tower - approx):\n";
     } else if (hasLastKnownLocation) {
@@ -1443,17 +1425,12 @@ String buildStatusMessage() {
     } else {
       msg += ":\n";
     }
-    
-    // Use GPS if available, otherwise use WiFi geolocation
-    double msgLat = gpsFixed ? latitude : wifiLat;
-    double msgLon = gpsFixed ? longitude : wifiLon;
-    
-    msg += "Lat: " + String(msgLat, 6) + "\n";
-    msg += "Lon: " + String(msgLon, 6) + "\n";
+    msg += "Lat: " + String(latitude, 6) + "\n";
+    msg += "Lon: " + String(longitude, 6) + "\n";
     if (gpsFixed) {
       msg += "Alt: " + String(altitude, 1) + "m\n";
     }
-    msg += "\nMaps: https://maps.google.com/?q=" + String(msgLat, 6) + "," + String(msgLon, 6) + "\n\n";
+    msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
   } else {
     msg += "Location: Not available\n\n";
   }
@@ -1764,175 +1741,6 @@ void updateSignalStrength() {
 }
 
 // Get WiFi geolocation using Mozilla's Ichnaea API (free, no API key needed!)
-void getWiFiGeolocation() {
-  // Only try if GPS is not fixed
-  if (gpsFixed) {
-    return;
-  }
-  
-  // Try WiFi geolocation only every 30 seconds to avoid excessive scanning
-  static unsigned long lastWiFiTry = 0;
-  if (millis() - lastWiFiTry < 30000) {
-    return;
-  }
-  lastWiFiTry = millis();
-  
-  Serial.println("[WIFI-LOC] Scanning WiFi networks for geolocation...");
-  
-  // Scan for WiFi networks (don't connect)
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(100);
-  
-  int n = WiFi.scanNetworks();
-  if (n == 0) {
-    Serial.println("[WIFI-LOC] No WiFi networks found");
-    return;
-  }
-  
-  // Build Mozilla Ichnaea API request
-  StaticJsonDocument<1024> doc;
-  JsonArray wifiAccessPoints = doc.createNestedArray("wifiAccessPoints");
-  
-  for (int i = 0; i < n && i < 20; i++) {  // Limit to 20 networks
-    JsonObject ap = wifiAccessPoints.createNestedObject();
-    ap["macAddress"] = WiFi.BSSIDstr(i);
-    ap["signalStrength"] = WiFi.RSSI(i);
-  }
-  
-  String jsonRequest;
-  serializeJson(doc, jsonRequest);
-  
-  Serial.println("[WIFI-LOC] Sending " + String(n) + " networks to Mozilla Ichnaea...");
-  
-  // Send via 4G using HTTPS POST
-  sendWiFiGeoRequest(jsonRequest);
-}
-
-void sendWiFiGeoRequest(String jsonData) {
-  // Mozilla's Ichnaea API endpoint (free, no authentication needed)
-  const char* apiHost = "location.services.mozilla.com";
-  const char* apiPath = "/v1/geolocate";
-  
-  Serial.println("[WIFI-LOC] Connecting to Mozilla API...");
-  
-  // Make sure bearer is open
-  sendATCommand("AT+SAPBR=1,1", "OK", 5000);
-  
-  // Initialize HTTP service
-  if (!sendATCommand("AT+HTTPINIT", "OK", 2000)) {
-    Serial.println("[WIFI-LOC] HTTP init failed");
-    return;
-  }
-  
-  // Set HTTP parameters
-  sendATCommand("AT+HTTPPARA=\"CID\",1", "OK", 1000);
-  sendATCommand("AT+HTTPSSL=1", "OK", 1000);
-  
-  // Set URL
-  String urlCmd = "AT+HTTPPARA=\"URL\",\"https://" + String(apiHost) + String(apiPath) + "\"";
-  if (!sendATCommand(urlCmd.c_str(), "OK", 2000)) {
-    Serial.println("[WIFI-LOC] URL set failed");
-    sendATCommand("AT+HTTPTERM", "OK", 1000);
-    return;
-  }
-  
-  // Set content type
-  sendATCommand("AT+HTTPPARA=\"CONTENT\",\"application/json\"", "OK", 1000);
-  
-  // Send data
-  String dataCmd = "AT+HTTPDATA=" + String(jsonData.length()) + ",10000";
-  if (sendATCommand(dataCmd.c_str(), "DOWNLOAD", 3000)) {
-    LTESerial.print(jsonData);
-    delay(1500);
-  } else {
-    Serial.println("[WIFI-LOC] HTTP data init failed");
-    sendATCommand("AT+HTTPTERM", "OK", 1000);
-    return;
-  }
-  
-  // Execute HTTP POST
-  Serial.println("[WIFI-LOC] Executing HTTP POST...");
-  LTESerial.println("AT+HTTPACTION=1");
-  
-  // Wait for response
-  String actionResponse = "";
-  unsigned long startTime = millis();
-  while (millis() - startTime < 15000) {
-    while (LTESerial.available()) {
-      char c = LTESerial.read();
-      actionResponse += c;
-    }
-    if (actionResponse.indexOf("+HTTPACTION:") != -1) {
-      break;
-    }
-    delay(100);
-  }
-  
-  Serial.println("[WIFI-LOC] Action response: " + actionResponse);
-  
-  // Check HTTP status
-  if (actionResponse.indexOf(",200,") != -1) {
-    Serial.println("[WIFI-LOC] HTTP 200 OK - Reading response...");
-    
-    delay(500);
-    while (LTESerial.available()) LTESerial.read();
-    
-    LTESerial.println("AT+HTTPREAD");
-    delay(2000);
-    
-    String httpResponse = "";
-    while (LTESerial.available()) {
-      httpResponse += (char)LTESerial.read();
-    }
-    
-    // Parse response
-    if (parseWiFiGeoResponse(httpResponse)) {
-      Serial.println("[WIFI-LOC] Location found!");
-      Serial.print("[WIFI-LOC] Lat: ");
-      Serial.print(wifiLat, 6);
-      Serial.print(" Lon: ");
-      Serial.println(wifiLon, 6);
-      wifiLocationAvailable = true;
-      lastWifiLocationUpdate = millis();
-    }
-  }
-  
-  sendATCommand("AT+HTTPTERM", "OK", 1000);
-}
-
-bool parseWiFiGeoResponse(String response) {
-  // Look for location data in JSON response
-  int locStart = response.indexOf("\"location\"");
-  if (locStart == -1) {
-    Serial.println("[WIFI-LOC] No location in response");
-    return false;
-  }
-  
-  // Extract latitude
-  int latIdx = response.indexOf("\"lat\"", locStart);
-  if (latIdx == -1) return false;
-  
-  int latStart = response.indexOf(":", latIdx) + 1;
-  int latEnd = response.indexOf(",", latStart);
-  String latStr = response.substring(latStart, latEnd);
-  latStr.trim();
-  wifiLat = latStr.toFloat();
-  
-  // Extract longitude
-  int lonIdx = response.indexOf("\"lng\"", locStart);
-  if (lonIdx == -1) return false;
-  
-  int lonStart = response.indexOf(":", lonIdx) + 1;
-  int lonEnd = response.indexOf(",", lonStart);
-  if (lonEnd == -1) lonEnd = response.indexOf("}", lonStart);
-  String lonStr = response.substring(lonStart, lonEnd);
-  lonStr.trim();
-  wifiLon = lonStr.toFloat();
-  
-  return (wifiLat != 0.0 && wifiLon != 0.0);
-}
-
 void stopTone() {
   noTone(PIEZO_PIN);
 }

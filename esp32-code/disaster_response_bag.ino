@@ -421,6 +421,14 @@ void IRAM_ATTR configButtonISR() {
 bool checkConfigMode() {
   Serial.println("[CONFIG] Checking for config mode...");
   
+  // Debug: Check both button states
+  int button1State = digitalRead(BUTTON_PIN);
+  int configButtonState = digitalRead(CONFIG_BUTTON_PIN);
+  Serial.print("[v0] Button 1 (GPIO 33) state: ");
+  Serial.println(button1State);
+  Serial.print("[v0] Config Button (GPIO 32) state: ");
+  Serial.println(configButtonState);
+  
   // Check if config button is pressed on boot
   if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
     display.clearBuffer();

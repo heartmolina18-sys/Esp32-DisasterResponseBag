@@ -149,18 +149,55 @@ void getLocationFromMozilla(String jsonData) {
   
   Serial.println("[HTTP] Connecting to Mozilla API...");
   
-  // Terminate any previous HTTP session
-  sendATCommand("AT+HTTPTERM", "OK", 1000);
-  delay(500);
+  // Terminate any previous HTTP session multiple times to be sure
+  for (int i = 0; i < 3; i++) {
+    Serial.println("[HTTP] Terminating previous session (attempt " + String(i+1) + ")...");
+    LTESerial.println("AT+HTTPTERM");
+    delay(500);
+    while (LTESerial.available()) LTESerial.read();
+  }
   
-  // Initialize HTTP service
-  if (!sendATCommand("AT+HTTPINIT", "OK", 2000)) {
-    Serial.println("[ERROR] HTTP init failed");
+  delay(1000);
+  
+  // Check bearer status before HTTP init
+  Serial.println("[HTTP] Checking bearer status...");
+  LTESerial.println("AT+SAPBR=2,1");
+  delay(500);
+  String bearerStatus = "";
+  while (LTESerial.available()) {
+    bearerStatus += (char)LTESerial.read();
+  }
+  Serial.println("[HTTP] Bearer status response: " + bearerStatus);
+  
+  // Open bearer if needed
+  Serial.println("[HTTP] Opening bearer...");
+  sendATCommand("AT+SAPBR=1,1", "OK", 5000);
+  
+  delay(1000);
+  
+  // Initialize HTTP service with better error checking
+  Serial.println("[HTTP] Initializing HTTP service...");
+  LTESerial.println("AT+HTTPINIT");
+  delay(2000);
+  
+  String httpInitResponse = "";
+  while (LTESerial.available()) {
+    httpInitResponse += (char)LTESerial.read();
+  }
+  
+  Serial.println("[HTTP] HTTP init response: " + httpInitResponse);
+  
+  if (httpInitResponse.indexOf("OK") == -1) {
+    Serial.println("[ERROR] HTTP init failed - response doesn't contain OK");
+    Serial.println("[ERROR] Full response was: [" + httpInitResponse + "]");
+    sendATCommand("AT+HTTPTERM", "OK", 1000);
     return;
   }
   
   // Set HTTP parameters
+  Serial.println("[HTTP] Setting HTTP parameters...");
   sendATCommand("AT+HTTPPARA=\"CID\",1", "OK", 1000);
+  sendATCommand("AT+HTTPPARA=\"REDIR\",0", "OK", 1000);  // Disable redirect
   sendATCommand("AT+HTTPSSL=1", "OK", 1000);
   
   // Set URL

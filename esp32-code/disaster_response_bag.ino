@@ -931,10 +931,28 @@ void initLTE() {
     delay(1000);
   }
   
+  // Set APN
   String apnCmd = "AT+CGDCONT=1,\"IP\",\"" + String(config.apn) + "\"";
   sendATCommand(apnCmd.c_str(), "OK", 2000);
   
+  // Activate PDP context
+  Serial.println("[LTE] Activating data connection...");
   sendATCommand("AT+CGACT=1,1", "OK", 5000);
+  
+  // Configure HTTP bearer for internet access
+  Serial.println("[LTE] Configuring HTTP bearer...");
+  sendATCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"", "OK", 2000);
+  
+  String bearerApn = "AT+SAPBR=3,1,\"APN\",\"" + String(config.apn) + "\"";
+  sendATCommand(bearerApn.c_str(), "OK", 2000);
+  
+  // Open bearer (may take a while)
+  sendATCommand("AT+SAPBR=1,1", "OK", 10000);
+  
+  // Check bearer status
+  sendATCommand("AT+SAPBR=2,1", "OK", 2000);
+  
+  // Check signal strength
   sendATCommand("AT+CSQ", "OK", 1000);
   
   Serial.println("[LTE] 4G module initialized!");
@@ -1465,13 +1483,16 @@ bool sendTelegramAlert(String chatId, String message) {
   sendATCommand("AT+HTTPTERM", "OK", 1000);
   delay(500);
   
+  // Make sure bearer is open
+  sendATCommand("AT+SAPBR=1,1", "OK", 5000);  // Open bearer (ignore if already open)
+  
   // Initialize HTTP service
   if (!sendATCommand("AT+HTTPINIT", "OK", 2000)) {
     Serial.println("[TELEGRAM] HTTP init failed");
     return false;
   }
   
-  // Set HTTP parameters
+  // Set HTTP parameters - use bearer profile 1
   sendATCommand("AT+HTTPPARA=\"CID\",1", "OK", 1000);
   
   // Enable SSL for HTTPS (IMPORTANT for Telegram API)

@@ -27,7 +27,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <EEPROM.h>
-#include <ArduinoJson.h>
 
 // ==================== CONFIGURATION ====================
 
@@ -1401,8 +1400,7 @@ String buildStressMessage() {
   
 
   msg += "Time: " + gpsTime + "\n";
-  msg += "Date: " + gpsDate + "\n";
-  msg += "Alert #" + String(alertCount + 1);
+  msg += "Date: " + gpsDate;
   
   return msg;
 }
@@ -1435,8 +1433,46 @@ String buildStatusMessage() {
     msg += "Location: Not available\n\n";
   }
   
+
   msg += "Time: " + gpsTime + "\n";
   msg += "Date: " + gpsDate;
+  
+  return msg;
+}
+
+String buildAlertMessage() {
+  String msg = "EMERGENCY ALERT\n\n";
+  msg += "Device: " + String(config.deviceName) + "\n";
+  msg += "IMMEDIATE ASSISTANCE NEEDED\n\n";
+  
+  if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
+    msg += "Location";
+    if (gpsFixed) {
+      msg += " (GPS):\n";
+      msg += "Satellites: " + String(satellites) + "\n";
+    } else if (locationFromLBS) {
+      msg += " (Cell Tower - approx):\n";
+      msg += "Accuracy: 100m-2km\n";
+    } else if (hasLastKnownLocation) {
+      unsigned long timeSince = millis() - lastLocationUpdate;
+      unsigned long minutesOld = timeSince / 60000;
+      msg += " (Last Known - " + String(minutesOld) + " minutes old):\n";
+      msg += "Accuracy: Unknown\n";
+    }
+    msg += "Lat: " + String(latitude, 6) + "\n";
+    msg += "Lon: " + String(longitude, 6) + "\n";
+    if (gpsFixed) {
+      msg += "Alt: " + String(altitude, 1) + "m\n";
+    }
+    msg += "\nMaps: https://maps.google.com/?q=" + String(latitude, 6) + "," + String(longitude, 6) + "\n\n";
+  } else {
+    msg += "Location: Not available\n\n";
+  }
+  
+
+  msg += "Time: " + gpsTime + "\n";
+  msg += "Date: " + gpsDate + "\n";
+  msg += "Alert #" + String(alertCount + 1);
   
   return msg;
 }
@@ -1740,7 +1776,6 @@ void updateSignalStrength() {
   }
 }
 
-// Get WiFi geolocation using Mozilla's Ichnaea API (free, no API key needed!)
 void stopTone() {
   noTone(PIEZO_PIN);
 }

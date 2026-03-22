@@ -336,9 +336,9 @@ void loop() {
   }
 
   // ========== CONFIG BUTTON HANDLING (GPIO 32) ==========
-  if (configButtonReleased && configButtonPressed) {
+  // Check if button was released (end of press)
+  if (configButtonReleased) {
     configButtonReleased = false;
-    configButtonPressed = false;
     
     unsigned long pressDuration = configButtonReleaseTime - configButtonPressTime;
     Serial.print("[v0] Config Button press duration: ");
@@ -358,6 +358,14 @@ void loop() {
       delay(1000);
       ESP.restart();
     }
+  }
+  
+  // Reset pressed flag when button is released
+  if (!digitalRead(CONFIG_BUTTON_PIN)) {
+    // Button is currently pressed
+  } else {
+    // Button is released
+    configButtonPressed = false;
   }
 
   // Update display

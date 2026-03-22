@@ -1347,13 +1347,9 @@ bool sendToAllRecipients(String message) {
     delay(500); // Small delay between sends
   }
   
-  // If no Telegram success, try SMS fallback
-  if (!anySuccess && config.smsCount > 0) {
-    Serial.println("[SEND] Telegram failed, trying SMS fallback...");
-    
-    display.clearBuffer();
-    display.drawStr(0, 30, "Trying SMS...");
-    display.sendBuffer();
+  // Send to all SMS recipients (parallel to Telegram, not as fallback)
+  if (config.smsCount > 0) {
+    Serial.println("[SEND] Sending to SMS recipients...");
     
     for (int i = 0; i < config.smsCount; i++) {
       Serial.print("[SEND] Sending SMS to: ");

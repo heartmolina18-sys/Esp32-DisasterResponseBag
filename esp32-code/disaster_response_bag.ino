@@ -187,6 +187,9 @@ int alertCount = 0;
 // Signal strength (CSQ value 0-31, 99=unknown)
 int signalCSQ = 99;
 
+// Flag to prevent config mode during message sending
+bool sendingMessage = false;
+
 // ==================== FORWARD DECLARATIONS ====================
 // Button ISR functions (defined later in code)
 void IRAM_ATTR button1ISR();
@@ -331,6 +334,12 @@ void loop() {
   }
 
   // ========== CONFIG BUTTON HANDLING (GPIO 32) ==========
+  // Ignore config button while sending message
+  if (sendingMessage) {
+    configButtonPressed = false;
+    configButtonReleased = false;
+  }
+  
   // Check if button was released (end of press)
   if (configButtonReleased) {
     configButtonReleased = false;
@@ -1152,6 +1161,7 @@ void handleConfigButton() {
 }
 
 void handleStressButton() {
+  sendingMessage = true;  // Prevent config mode during sending
   Serial.println("\n[STRESS] Button pressed - Stress signal\n");
   playStressSignal();
   
@@ -1205,9 +1215,11 @@ void handleStressButton() {
   }
   
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
+  sendingMessage = false;  // Allow config mode again
 }
 
 void handleSafeButton() {
+  sendingMessage = true;  // Prevent config mode during sending
   Serial.println("\n[SAFE] Button pressed - I'm safe\n");
   playSafeSignal();
   
@@ -1260,6 +1272,7 @@ void handleSafeButton() {
   }
   
   currentState = gpsFixed ? STATE_READY : STATE_WAITING_GPS;
+  sendingMessage = false;  // Allow config mode again
 }
 
 // Button 2: Tap = Toggle continuous SOS piezo alarm ON/OFF

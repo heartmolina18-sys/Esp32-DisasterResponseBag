@@ -182,10 +182,8 @@ int alertCount = 0;
 
 // ==================== FORWARD DECLARATIONS ====================
 // Button ISR functions (defined later in code)
-void IRAM_ATTR button1PressISR();
-void IRAM_ATTR button1ReleaseISR();
-void IRAM_ATTR button2PressISR();
-void IRAM_ATTR button2ReleaseISR();
+void IRAM_ATTR button1ISR();
+void IRAM_ATTR button2ISR();
 
 // ==================== MAIN CODE ====================
 
@@ -242,13 +240,11 @@ void setup() {
     return;
   }
 
-  // Normal operation mode - Button 1 interrupts
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), button1PressISR, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), button1ReleaseISR, RISING);
+  // Normal operation mode - Button 1 interrupt (CHANGE mode to detect both press and release)
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), button1ISR, CHANGE);
   
-  // Button 2 interrupts
-  attachInterrupt(digitalPinToInterrupt(BUTTON2_PIN), button2PressISR, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BUTTON2_PIN), button2ReleaseISR, RISING);
+  // Button 2 interrupt (CHANGE mode to detect both press and release)
+  attachInterrupt(digitalPinToInterrupt(BUTTON2_PIN), button2ISR, CHANGE);
 
   // Initialize GPS Module
   initGPS();
@@ -359,36 +355,36 @@ void loop() {
 
 // ==================== CONFIG MODE FUNCTIONS ====================
 
-// Button 1 ISR (Config/Stress/Safe)
-void IRAM_ATTR button1PressISR() {
+// Button 1 ISR (Config/Stress/Safe) - handles both press and release
+void IRAM_ATTR button1ISR() {
   if ((millis() - lastButton1DebounceTime) > DEBOUNCE_DELAY) {
-    button1PressTime = millis();
-    button1Pressed = true;
+    int state = digitalRead(BUTTON_PIN);
+    if (state == LOW) {
+      // Button pressed (pulled LOW)
+      button1PressTime = millis();
+      button1Pressed = true;
+    } else {
+      // Button released (pulled HIGH)
+      button1ReleaseTime = millis();
+      button1Released = true;
+    }
     lastButton1DebounceTime = millis();
   }
 }
 
-void IRAM_ATTR button1ReleaseISR() {
-  if ((millis() - lastButton1DebounceTime) > DEBOUNCE_DELAY) {
-    button1ReleaseTime = millis();
-    button1Released = true;
-    lastButton1DebounceTime = millis();
-  }
-}
-
-// Button 2 ISR (Piezo/Light/SOS)
-void IRAM_ATTR button2PressISR() {
+// Button 2 ISR (Piezo/Light/SOS) - handles both press and release
+void IRAM_ATTR button2ISR() {
   if ((millis() - lastButton2DebounceTime) > DEBOUNCE_DELAY) {
-    button2PressTime = millis();
-    button2Pressed = true;
-    lastButton2DebounceTime = millis();
-  }
-}
-
-void IRAM_ATTR button2ReleaseISR() {
-  if ((millis() - lastButton2DebounceTime) > DEBOUNCE_DELAY) {
-    button2ReleaseTime = millis();
-    button2Released = true;
+    int state = digitalRead(BUTTON2_PIN);
+    if (state == LOW) {
+      // Button pressed (pulled LOW)
+      button2PressTime = millis();
+      button2Pressed = true;
+    } else {
+      // Button released (pulled HIGH)
+      button2ReleaseTime = millis();
+      button2Released = true;
+    }
     lastButton2DebounceTime = millis();
   }
 }

@@ -70,13 +70,10 @@
 // Config Mode Button (separate button)
 #define CONFIG_BUTTON_PIN  32
 
-// LED Indicator
-// LED removed - no longer using
-
 // Piezo Buzzer (piezo speaker)
 #define PIEZO_PIN      13
 
-// Button 2 - Secondary button for LED/Piezo/SOS
+// Button 2 - Secondary button for Piezo/SOS
 #define BUTTON2_PIN    25
 
 // Battery Monitoring (voltage divider)
@@ -283,7 +280,6 @@ void setup() {
 
 void loop() {
   // Config mode is handled inside startConfigMode() with its own loop
-  // This check is just a safety - shouldn't reach here if in config mode
   if (configMode) {
     server.handleClient();
     return;
@@ -356,7 +352,6 @@ void loop() {
   if (!digitalRead(CONFIG_BUTTON_PIN)) {
     // Button is currently pressed
   } else {
-    // Button is released
     configButtonPressed = false;
   }
 

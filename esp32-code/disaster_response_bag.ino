@@ -27,6 +27,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <EEPROM.h>
+#include <ArduinoJson.h>
 
 // ==================== CONFIGURATION ====================
 

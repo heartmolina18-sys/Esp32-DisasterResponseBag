@@ -189,6 +189,9 @@ bool piezoActive = false;  // Toggle for continuous SOS piezo alarm
 unsigned long alertSentTime = 0;
 int alertCount = 0;
 
+// Signal strength (CSQ value 0-31, 99=unknown)
+int signalCSQ = 99;
+
 // ==================== FORWARD DECLARATIONS ====================
 // Button ISR functions (defined later in code)
 void IRAM_ATTR button1ISR();
@@ -371,6 +374,9 @@ void loop() {
 
   // Update display
   updateDisplay();
+
+  // Poll signal strength every 10 seconds
+  updateSignalStrength();
 
   delay(10);
 }
@@ -1593,17 +1599,27 @@ void updateDisplay() {
   // Header with device name
   display.drawStr(0, 8, config.deviceName);
   
-  // Battery indicator
-  if (batteryVoltage > 0.5) {
-    char batStr[8];
-    sprintf(batStr, "%d%%", batteryPercent);
-    display.drawStr(90, 8, batStr);
-    
-    // Battery icon
-    display.drawFrame(115, 0, 12, 8);
-    display.drawBox(127, 2, 1, 4);
-    int fillWidth = map(batteryPercent, 0, 100, 0, 10);
-    display.drawBox(116, 1, fillWidth, 6);
+  // Signal strength bars (top right, 4 bars)
+  // CSQ: 0-31 (31=best), 99=no signal
+  // Map to 0-4 bars
+  int bars = 0;
+  if (signalCSQ != 99 && signalCSQ > 0) {
+    if      (signalCSQ >= 20) bars = 4;
+    else if (signalCSQ >= 15) bars = 3;
+    else if (signalCSQ >= 10) bars = 2;
+    else if (signalCSQ >= 1)  bars = 1;
+  }
+  // Draw 4 signal bars (each bar: 3px wide, spaced 1px apart)
+  // Bar heights: 2, 4, 6, 8px (increasing)
+  int barX = 100;  // starting X position
+  for (int i = 0; i < 4; i++) {
+    int barH = 2 + (i * 2);   // heights: 2, 4, 6, 8
+    int barY = 8 - barH;       // align to bottom of header
+    if (i < bars) {
+      display.drawBox(barX + (i * 4), barY, 3, barH);  // filled bar
+    } else {
+      display.drawFrame(barX + (i * 4), barY, 3, barH);  // empty bar
+    }
   }
   
   display.drawLine(0, 11, 128, 11);
@@ -1661,6 +1677,36 @@ void updateDisplay() {
 // Piezo control functions
 void playTone(int frequency, int duration) {
   tone(PIEZO_PIN, frequency, duration);
+}
+
+// Poll LTE signal strength every 10 seconds
+void updateSignalStrength() {
+  static unsigned long lastSignalUpdate = 0;
+  if (millis() - lastSignalUpdate < 10000) return;
+  lastSignalUpdate = millis();
+  
+  // Flush buffer
+  while (LTESerial.available()) LTESerial.read();
+  
+  LTESerial.println("AT+CSQ");
+  delay(300);
+  
+  String response = "";
+  unsigned long start = millis();
+  while (millis() - start < 800) {
+    while (LTESerial.available()) {
+      response += (char)LTESerial.read();
+    }
+  }
+  
+  int idx = response.indexOf("+CSQ:");
+  if (idx != -1) {
+    String csqStr = response.substring(idx + 5);
+    csqStr.trim();
+    int commaIdx = csqStr.indexOf(",");
+    if (commaIdx != -1) csqStr = csqStr.substring(0, commaIdx);
+    signalCSQ = csqStr.toInt();
+  }
 }
 
 void stopTone() {

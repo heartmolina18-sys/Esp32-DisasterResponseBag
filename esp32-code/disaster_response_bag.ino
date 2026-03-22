@@ -1448,9 +1448,18 @@ String buildAlertMessage() {
 bool sendTelegramAlert(String chatId, String message) {
   Serial.println("[TELEGRAM] Sending to: " + chatId);
   
+  // Check if token is set
+  if (String(config.telegramBotToken).length() == 0) {
+    Serial.println("[TELEGRAM] ERROR: Bot token not configured!");
+    return false;
+  }
+  
   String encodedMsg = urlEncode(message);
   String url = "/bot" + String(config.telegramBotToken) + "/sendMessage";
   String postData = "chat_id=" + chatId + "&text=" + encodedMsg;
+  
+  Serial.println("[TELEGRAM] URL: https://api.telegram.org" + url);
+  Serial.println("[TELEGRAM] Post data: " + postData);
   
   sendATCommand("AT+HTTPTERM", "OK", 1000);
   delay(500);
@@ -1463,7 +1472,9 @@ bool sendTelegramAlert(String chatId, String message) {
   sendATCommand("AT+HTTPPARA=\"CID\",1", "OK", 1000);
   
   String urlCmd = "AT+HTTPPARA=\"URL\",\"https://api.telegram.org" + url + "\"";
+  Serial.println("[TELEGRAM] Setting URL: " + urlCmd);
   if (!sendATCommand(urlCmd.c_str(), "OK", 2000)) {
+    Serial.println("[TELEGRAM] URL set failed");
     sendATCommand("AT+HTTPTERM", "OK", 1000);
     return false;
   }
@@ -1471,18 +1482,29 @@ bool sendTelegramAlert(String chatId, String message) {
   sendATCommand("AT+HTTPPARA=\"CONTENT\",\"application/x-www-form-urlencoded\"", "OK", 1000);
   
   String dataCmd = "AT+HTTPDATA=" + String(postData.length()) + ",10000";
+  Serial.println("[TELEGRAM] Sending data: " + dataCmd);
   if (sendATCommand(dataCmd.c_str(), "DOWNLOAD", 2000)) {
     LTESerial.print(postData);
     delay(1000);
-  }
-  
-  if (!sendATCommand("AT+HTTPACTION=1", "OK", 5000)) {
+  } else {
+    Serial.println("[TELEGRAM] HTTP data init failed");
     sendATCommand("AT+HTTPTERM", "OK", 1000);
     return false;
   }
   
-  delay(5000);
+  Serial.println("[TELEGRAM] Executing HTTP POST...");
+  if (!sendATCommand("AT+HTTPACTION=1", "OK", 5000)) {
+    Serial.println("[TELEGRAM] HTTP action failed");
+    sendATCommand("AT+HTTPTERM", "OK", 1000);
+    return false;
+  }
+  
+  delay(2000);
+  
+  String response = "";
   sendATCommand("AT+HTTPREAD", "OK", 5000);
+  Serial.println("[TELEGRAM] HTTP read response received");
+  
   sendATCommand("AT+HTTPTERM", "OK", 1000);
   
   Serial.println("[TELEGRAM] Message sent!");

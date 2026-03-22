@@ -306,12 +306,16 @@ void loop() {
   }
   
   // Check if double-tap window has expired for button 1
-  if (button1TapCount == 1 && (millis() - button1LastTapTime >= DOUBLE_TAP_WINDOW)) {
-    handleStressButton();
-    button1TapCount = 0;
-  } else if (button1TapCount >= 2) {
-    handleSafeButton();
-    button1TapCount = 0;
+  if (button1TapCount > 0) {
+    if (button1TapCount >= 2) {
+      // Double tap detected - send safe message
+      handleSafeButton();
+      button1TapCount = 0;
+    } else if (millis() - button1LastTapTime >= DOUBLE_TAP_WINDOW) {
+      // Single tap timeout expired - send stress message
+      handleStressButton();
+      button1TapCount = 0;
+    }
   }
 
   // ========== BUTTON 2 HANDLING (Piezo SOS Toggle) ==========

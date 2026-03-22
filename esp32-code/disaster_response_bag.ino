@@ -1459,56 +1459,97 @@ bool sendTelegramAlert(String chatId, String message) {
   String postData = "chat_id=" + chatId + "&text=" + encodedMsg;
   
   Serial.println("[TELEGRAM] URL: https://api.telegram.org" + url);
-  Serial.println("[TELEGRAM] Post data: " + postData);
+  Serial.println("[TELEGRAM] Post data length: " + String(postData.length()));
   
+  // Terminate any previous HTTP session
   sendATCommand("AT+HTTPTERM", "OK", 1000);
   delay(500);
   
+  // Initialize HTTP service
   if (!sendATCommand("AT+HTTPINIT", "OK", 2000)) {
     Serial.println("[TELEGRAM] HTTP init failed");
     return false;
   }
   
+  // Set HTTP parameters
   sendATCommand("AT+HTTPPARA=\"CID\",1", "OK", 1000);
   
+  // Enable SSL for HTTPS (IMPORTANT for Telegram API)
+  sendATCommand("AT+HTTPSSL=1", "OK", 1000);
+  
+  // Set URL
   String urlCmd = "AT+HTTPPARA=\"URL\",\"https://api.telegram.org" + url + "\"";
-  Serial.println("[TELEGRAM] Setting URL: " + urlCmd);
   if (!sendATCommand(urlCmd.c_str(), "OK", 2000)) {
     Serial.println("[TELEGRAM] URL set failed");
     sendATCommand("AT+HTTPTERM", "OK", 1000);
     return false;
   }
   
+  // Set content type
   sendATCommand("AT+HTTPPARA=\"CONTENT\",\"application/x-www-form-urlencoded\"", "OK", 1000);
   
+  // Prepare to send data
   String dataCmd = "AT+HTTPDATA=" + String(postData.length()) + ",10000";
-  Serial.println("[TELEGRAM] Sending data: " + dataCmd);
-  if (sendATCommand(dataCmd.c_str(), "DOWNLOAD", 2000)) {
+  if (sendATCommand(dataCmd.c_str(), "DOWNLOAD", 3000)) {
     LTESerial.print(postData);
-    delay(1000);
+    delay(1500);
   } else {
     Serial.println("[TELEGRAM] HTTP data init failed");
     sendATCommand("AT+HTTPTERM", "OK", 1000);
     return false;
   }
   
+  // Execute HTTP POST
   Serial.println("[TELEGRAM] Executing HTTP POST...");
-  if (!sendATCommand("AT+HTTPACTION=1", "OK", 5000)) {
-    Serial.println("[TELEGRAM] HTTP action failed");
-    sendATCommand("AT+HTTPTERM", "OK", 1000);
-    return false;
+  LTESerial.println("AT+HTTPACTION=1");
+  
+  // Wait for +HTTPACTION response (contains status code)
+  String actionResponse = "";
+  unsigned long startTime = millis();
+  while (millis() - startTime < 15000) {  // 15 second timeout
+    while (LTESerial.available()) {
+      char c = LTESerial.read();
+      actionResponse += c;
+    }
+    if (actionResponse.indexOf("+HTTPACTION:") != -1) {
+      break;
+    }
+    delay(100);
   }
   
+  Serial.println("[TELEGRAM] Action response: " + actionResponse);
+  
+  // Check HTTP status code from response (+HTTPACTION: 1,200,xxx means success)
+  bool success = false;
+  if (actionResponse.indexOf(",200,") != -1) {
+    Serial.println("[TELEGRAM] HTTP 200 OK - Message sent successfully!");
+    success = true;
+  } else if (actionResponse.indexOf(",") != -1) {
+    // Extract status code for debugging
+    int idx = actionResponse.indexOf("+HTTPACTION:");
+    if (idx != -1) {
+      String statusPart = actionResponse.substring(idx + 14);
+      Serial.println("[TELEGRAM] HTTP Status: " + statusPart);
+    }
+  }
+  
+  // Read response body for debugging
+  delay(500);
+  while (LTESerial.available()) LTESerial.read();  // Clear buffer
+  
+  LTESerial.println("AT+HTTPREAD");
   delay(2000);
   
-  String response = "";
-  sendATCommand("AT+HTTPREAD", "OK", 5000);
-  Serial.println("[TELEGRAM] HTTP read response received");
+  String httpResponse = "";
+  while (LTESerial.available()) {
+    httpResponse += (char)LTESerial.read();
+  }
+  Serial.println("[TELEGRAM] Response body: " + httpResponse);
   
+  // Terminate HTTP
   sendATCommand("AT+HTTPTERM", "OK", 1000);
   
-  Serial.println("[TELEGRAM] Message sent!");
-  return true;
+  return success;
 }
 
 bool sendSMSAlert(String phoneNumber, String message) {

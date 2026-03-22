@@ -335,6 +335,31 @@ void loop() {
     runSOSPattern();
   }
 
+  // ========== CONFIG BUTTON HANDLING (GPIO 32) ==========
+  if (configButtonReleased && configButtonPressed) {
+    configButtonReleased = false;
+    configButtonPressed = false;
+    
+    unsigned long pressDuration = configButtonReleaseTime - configButtonPressTime;
+    Serial.print("[v0] Config Button press duration: ");
+    Serial.print(pressDuration);
+    Serial.println(" ms");
+    
+    if (pressDuration >= LONG_PRESS_TIME) {
+      // Hold for 2+ seconds = Enter config mode
+      Serial.println("\n[CONFIG] Config Button held -> Entering config mode\n");
+      enterConfigMode();
+    } else {
+      // Tap = Restart device
+      Serial.println("\n[CONFIG] Config Button tapped -> Restart device\n");
+      display.clearBuffer();
+      display.drawStr(15, 30, "Restarting...");
+      display.sendBuffer();
+      delay(1000);
+      ESP.restart();
+    }
+  }
+
   // Update display
   updateDisplay();
 

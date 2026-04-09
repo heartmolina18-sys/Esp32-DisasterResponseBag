@@ -1355,17 +1355,23 @@ bool sendToAllRecipients(String message) {
   
   // Send to all SMS recipients (parallel to Telegram, not as fallback)
   if (config.smsCount > 0) {
+    Serial.println("[SEND] SMS Count: " + String(config.smsCount));
     Serial.println("[SEND] Sending to SMS recipients...");
     
     for (int i = 0; i < config.smsCount; i++) {
-      Serial.print("[SEND] Sending SMS to: ");
+      Serial.print("[SEND] SMS #" + String(i+1) + ": ");
       Serial.println(config.smsNumbers[i]);
       
       if (sendSMSAlert(String(config.smsNumbers[i]), message)) {
         anySuccess = true;
+        Serial.println("[SEND] SMS #" + String(i+1) + " sent successfully");
+      } else {
+        Serial.println("[SEND] SMS #" + String(i+1) + " failed");
       }
-      delay(1000);
+      delay(2000);  // Increased delay between SMS sends
     }
+  } else {
+    Serial.println("[SEND] No SMS recipients configured (smsCount = 0)");
   }
   
   return anySuccess;
@@ -1590,6 +1596,13 @@ bool sendTelegramAlert(String chatId, String message) {
 
 bool sendSMSAlert(String phoneNumber, String message) {
   Serial.println("[SMS] Sending to: " + phoneNumber);
+  Serial.println("[SMS] Message length: " + String(message.length()));
+  
+  // Check if phone number is valid (should have digits)
+  if (phoneNumber.length() == 0 || phoneNumber == "NULL") {
+    Serial.println("[SMS] ERROR: Invalid phone number");
+    return false;
+  }
   
   // Strip special characters for SMS
   String smsMessage = message;
@@ -1599,13 +1612,16 @@ bool sendSMSAlert(String phoneNumber, String message) {
     smsMessage = smsMessage.substring(0, 447) + "...";
   }
   
+  Serial.println("[SMS] Setting text mode...");
   if (!sendATCommand("AT+CMGF=1", "OK", 2000)) {
+    Serial.println("[SMS] Failed to set text mode");
     return false;
   }
   
   sendATCommand("AT+CSCS=\"GSM\"", "OK", 1000);
   
   String smsCmd = "AT+CMGS=\"" + phoneNumber + "\"";
+  Serial.println("[SMS] Sending command: " + smsCmd);
   LTESerial.println(smsCmd);
   delay(500);
   
@@ -1623,10 +1639,12 @@ bool sendSMSAlert(String phoneNumber, String message) {
   }
   
   if (!promptReceived) {
+    Serial.println("[SMS] ERROR: No prompt (>) received from module");
     sendATCommand("\x1B", "OK", 1000);
     return false;
   }
   
+  Serial.println("[SMS] Sending message text...");
   LTESerial.print(smsMessage);
   delay(100);
   LTESerial.write(0x1A);
@@ -1639,12 +1657,14 @@ bool sendSMSAlert(String phoneNumber, String message) {
     }
     
     if (response.indexOf("+CMGS:") != -1) {
-      Serial.println("[SMS] SMS sent!");
+      Serial.println("[SMS] SMS sent successfully!");
+      Serial.println("[SMS] Response: " + response);
       return true;
     }
     
     if (response.indexOf("ERROR") != -1) {
-      Serial.println("[SMS] Failed");
+      Serial.println("[SMS] Failed - got ERROR response");
+      Serial.println("[SMS] Response: " + response);
       return false;
     }
     

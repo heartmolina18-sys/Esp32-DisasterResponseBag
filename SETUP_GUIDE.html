@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DisasterBag - Setup & Configuration Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        
+        header {
+            border-bottom: 4px solid #FF6B6B;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            color: #FF6B6B;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 1.1em;
+            color: #666;
+        }
+        
+        h2 {
+            font-size: 1.8em;
+            color: #2c3e50;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-left: 4px solid #FF6B6B;
+            padding-left: 15px;
+        }
+        
+        h3 {
+            font-size: 1.3em;
+            color: #34495e;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        
+        .step {
+            background: #f9f9f9;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .step strong {
+            color: #3498db;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th {
+            background: #FF6B6B;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+        }
+        
+        td {
+            border: 1px solid #ddd;
+            padding: 12px;
+        }
+        
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        ul, ol {
+            margin-left: 20px;
+            margin-bottom: 15px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+        }
+        
+        .button-guide {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .button-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #FF6B6B;
+        }
+        
+        .button-item strong {
+            color: #FF6B6B;
+            font-size: 1.1em;
+        }
+        
+        .config-section {
+            background: #e8f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .config-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+        
+        footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .toc {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .toc h3 {
+            margin-top: 0;
+        }
+        
+        .toc ol {
+            margin-bottom: 0;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            .container {
+                box-shadow: none;
+                max-width: 100%;
+            }
+            h2 {
+                page-break-after: avoid;
+            }
+            .step, .config-section, .button-guide {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚨 DisasterBag</h1>
+            <p class="subtitle">Complete Setup & Configuration Guide</p>
+        </header>
+        
+        <div class="toc">
+            <h3>Table of Contents</h3>
+            <ol>
+                <li>Getting Started</li>
+                <li>Entering Config Mode</li>
+                <li>Telegram Setup</li>
+                <li>SMS Configuration</li>
+                <li>Button Controls</li>
+                <li>Device Settings</li>
+                <li>Troubleshooting</li>
+            </ol>
+        </div>
+
+        <h2>1. Getting Started</h2>
+        <p>
+            DisasterBag is an emergency alert device that sends stress signals and status updates to your trusted contacts via Telegram and SMS. 
+            Before using the device, you must configure it with your contacts and communication preferences.
+        </p>
+        
+        <div class="warning">
+            <strong>⚠️ Important:</strong> Ensure your ESP32 device is powered on and the SIM card is inserted before starting configuration.
+        </div>
+
+        <h2>2. Entering Config Mode</h2>
+        <p>
+            Config Mode allows you to set up Telegram Chat IDs, SMS phone numbers, and other device settings through a web interface.
+        </p>
+        
+        <h3>How to Enter Config Mode</h3>
+        <div class="step">
+            <strong>Step 1:</strong> Press and hold the Config Button (GPIO 32) for 2+ seconds until the display shows "CONFIG MODE ACTIVE"
+        </div>
+        
+        <div class="step">
+            <strong>Step 2:</strong> The device will create a WiFi hotspot named: <code>DisasterBag-Setup</code>
+        </div>
+        
+        <div class="step">
+            <strong>Step 3:</strong> On your phone/computer, connect to this WiFi hotspot (no password required)
+        </div>
+        
+        <div class="step">
+            <strong>Step 4:</strong> Open a web browser and go to: <code>192.168.4.1</code>
+        </div>
+        
+        <div class="step">
+            <strong>Step 5:</strong> You should see the configuration page with all available options
+        </div>
+        
+        <div class="success">
+            ✓ You are now in Config Mode and can update all settings
+        </div>
+
+        <h2>3. Telegram Setup</h2>
+        <p>
+            Telegram is the primary communication method for DisasterBag. It sends detailed alerts with location, time, and device status.
+        </p>
+        
+        <h3>Step 1: Create a Telegram Bot</h3>
+        <ol>
+            <li>Open Telegram app on your phone or go to web.telegram.org</li>
+            <li>Search for <strong>@BotFather</strong> (official Telegram bot creator)</li>
+            <li>Tap START to open BotFather</li>
+            <li>Send the message: <code>/newbot</code></li>
+            <li>Follow the prompts:
+                <ul>
+                    <li>Enter a name for your bot (e.g., "DisasterBag Alert Bot")</li>
+                    <li>Enter a username (must end with "_bot", e.g., "DisasterBag_Alert_bot")</li>
+                </ul>
+            </li>
+            <li>BotFather will give you a token that looks like: <code>123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11</code></li>
+            <li><strong>Copy this token</strong> - you'll need it in Config Mode</li>
+        </ol>
+        
+        <h3>Step 2: Get Your Telegram Chat ID</h3>
+        <ol>
+            <li>In Telegram, search for <strong>@userinfobot</strong></li>
+            <li>Tap START</li>
+            <li>The bot will show your Chat ID (a long number)</li>
+            <li><strong>Copy this number</strong> - you'll need it for configuration</li>
+        </ol>
+        
+        <div class="warning">
+            <strong>⚠️ Important:</strong> For EACH person who should receive alerts, they must:
+            <ol>
+                <li>Search for your bot (e.g., @DisasterBag_Alert_bot)</li>
+                <li>Tap <strong>START</strong> to activate the bot</li>
+                <li>Get their own Chat ID from @userinfobot</li>
+            </ol>
+        </div>
+        
+        <h3>Step 3: Configure in Device</h3>
+        <div class="config-section">
+            <div class="config-item">
+                <strong>Telegram Bot Token:</strong><br>
+                Paste your token from BotFather here. Example:<br>
+                <code>123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11</code>
+            </div>
+            
+            <div class="config-item">
+                <strong>Telegram Chat IDs:</strong><br>
+                Enter each recipient's Chat ID, separated by commas (no spaces).<br>
+                <code>7176808640,1234567890,9876543210</code>
+            </div>
+        </div>
+        
+        <div class="success">
+            ✓ Save the configuration. Your device is now ready to send Telegram alerts!
+        </div>
+
+        <h2>4. SMS Configuration</h2>
+        <p>
+            SMS is a backup communication method that works with standard mobile phones. Messages are short but include location coordinates.
+        </p>
+        
+        <h3>Adding SMS Recipients</h3>
+        <div class="config-section">
+            <div class="config-item">
+                <strong>Phone Numbers Format:</strong><br>
+                Enter phone numbers with country code, separated by commas:<br>
+                <code>+639351738229,+639967472407,+639123456789</code><br><br>
+                <strong>For Philippines:</strong> +63 (remove leading 0 from local number)<br>
+                Example: 09123456789 → +639123456789
+            </div>
+        </div>
+        
+        <div class="warning">
+            <strong>⚠️ Note:</strong> SMS messages are limited to 160 characters and include location coordinates only.
+            For full message details, use Telegram.
+        </div>
+
+        <h2>5. Button Controls</h2>
+        <div class="button-guide">
+            <table>
+                <tr>
+                    <th>Button</th>
+                    <th>Action</th>
+                    <th>Result</th>
+                </tr>
+                <tr>
+                    <td><strong>Button 1 (GPIO 26)</strong></td>
+                    <td><strong>Single Tap</strong></td>
+                    <td>Sends STRESS signal with location. Piezo beeps loudly. Alerts all contacts.</td>
+                </tr>
+                <tr>
+                    <td><strong>Button 1 (GPIO 26)</strong></td>
+                    <td><strong>Double Tap</strong> (within 800ms)</td>
+                    <td>Sends "I'm OK" / SAFE message. Device is functioning properly. Alerts all contacts.</td>
+                </tr>
+                <tr>
+                    <td><strong>Config Button (GPIO 32)</strong></td>
+                    <td><strong>Tap</strong> (&lt;2 seconds)</td>
+                    <td>Device restarts. Used for quick reset.</td>
+                </tr>
+                <tr>
+                    <td><strong>Config Button (GPIO 32)</strong></td>
+                    <td><strong>Hold</strong> (2+ seconds)</td>
+                    <td>Enters CONFIG MODE. Creates WiFi hotspot for setup.</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>6. Device Settings</h2>
+        <h3>Available Configuration Options</h3>
+        <div class="config-section">
+            <div class="config-item">
+                <strong>Device Name:</strong><br>
+                Custom name that appears in alerts (e.g., "Mark's DisasterBag"). Max 30 characters.
+            </div>
+            
+            <div class="config-item">
+                <strong>Telegram Bot Token:</strong><br>
+                Your bot token from @BotFather (required for Telegram alerts).
+            </div>
+            
+            <div class="config-item">
+                <strong>Telegram Chat IDs:</strong><br>
+                Comma-separated list of recipient Chat IDs (required for Telegram alerts).
+            </div>
+            
+            <div class="config-item">
+                <strong>SMS Phone Numbers:</strong><br>
+                Comma-separated list of phone numbers with country codes (optional, for SMS alerts).
+            </div>
+        </div>
+
+        <h2>7. Troubleshooting</h2>
+        
+        <h3>Device Won't Enter Config Mode</h3>
+        <div class="step">
+            <strong>Problem:</strong> Config Button doesn't activate config mode<br><br>
+            <strong>Solutions:</strong>
+            <ul>
+                <li>Make sure you hold the button for 2+ seconds (watch the display for confirmation)</li>
+                <li>Check that GPIO 32 is properly connected</li>
+                <li>Try a brief power cycle: remove USB power, wait 10 seconds, reconnect</li>
+            </ul>
+        </div>
+        
+        <h3>WiFi Hotspot Not Appearing</h3>
+        <div class="step">
+            <strong>Problem:</strong> Can't find DisasterBag-Setup WiFi after entering config mode<br><br>
+            <strong>Solutions:</strong>
+            <ul>
+                <li>Check phone WiFi settings - enable WiFi if disabled</li>
+                <li>Look for networks starting with "Disaster" or check the device display for the actual SSID</li>
+                <li>Restart the device and try entering config mode again</li>
+                <li>Check device Serial Monitor to confirm config mode activation</li>
+            </ul>
+        </div>
+        
+        <h3>Can't Access Configuration Page</h3>
+        <div class="step">
+            <strong>Problem:</strong> Connected to WiFi but can't open 192.168.4.1<br><br>
+            <strong>Solutions:</strong>
+            <ul>
+                <li>Make sure you're connected to DisasterBag-Setup WiFi (check WiFi settings)</li>
+                <li>Try different browsers or clear cache</li>
+                <li>Check device IP - look at Serial Monitor for actual IP address</li>
+                <li>Try connecting device directly with USB cable and open Serial Monitor to confirm WiFi is active</li>
+            </ul>
+        </div>
+        
+        <h3>Telegram Alerts Not Received</h3>
+        <div class="step">
+            <strong>Problem:</strong> Device sends alerts but Telegram doesn't receive them<br><br>
+            <strong>Solutions:</strong>
+            <ul>
+                <li>Verify Telegram Chat IDs are correct (use @userinfobot to double-check)</li>
+                <li>Ensure each recipient has started the bot (press START in @YourBotName)</li>
+                <li>Check that Bot Token is correct (copy from @BotFather exactly)</li>
+                <li>Check Serial Monitor for "[TELEGRAM] Failed" messages indicating network issues</li>
+                <li>Test with 4G/mobile data instead of WiFi</li>
+            </ul>
+        </div>
+        
+        <h3>SMS Not Sending</h3>
+        <div class="step">
+            <strong>Problem:</strong> SMS alerts don't reach recipients<br><br>
+            <strong>Solutions:</strong>
+            <ul>
+                <li>Verify phone numbers are formatted correctly with country code: +63XXXXXXXXXX</li>
+                <li>Remove any spaces or dashes from numbers</li>
+                <li>Check that SIM card has SMS plan enabled (contact your carrier)</li>
+                <li>Check Serial Monitor for "+CMS ERROR" messages - indicates SIM/carrier issue</li>
+                <li>Try sending to just one number first to test</li>
+            </ul>
+        </div>
+        
+        <h3>Display Shows No Location</h3>
+        <div class="step">
+            <strong>Problem:</strong> GPS not acquiring signal<br><br>
+            <strong>Solutions:</strong>
+            <ul>
+                <li>Make sure device has clear view of sky (GPS needs satellite signal)</li>
+                <li>Wait at least 60 seconds for GPS first fix (longer in cities)</li>
+                <li>Try moving to an open area away from buildings</li>
+                <li>Device will use Last Known Location if GPS unavailable</li>
+            </ul>
+        </div>
+
+        <h2>Quick Reference</h2>
+        <table>
+            <tr>
+                <th>Task</th>
+                <th>Steps</th>
+            </tr>
+            <tr>
+                <td>Enter Config Mode</td>
+                <td>Hold Config Button 2+ seconds until display shows "CONFIG MODE ACTIVE"</td>
+            </tr>
+            <tr>
+                <td>Access Settings</td>
+                <td>Connect to DisasterBag-Setup WiFi, open browser to 192.168.4.1</td>
+            </tr>
+            <tr>
+                <td>Send Stress Alert</td>
+                <td>Press Button 1 once - device sends alert with location to all contacts</td>
+            </tr>
+            <tr>
+                <td>Send Safety Update</td>
+                <td>Press Button 1 twice (within 800ms) - sends "I'm OK" message</td>
+            </tr>
+            <tr>
+                <td>Get Telegram Chat ID</td>
+                <td>Message @userinfobot on Telegram and copy your ID number</td>
+            </tr>
+            <tr>
+                <td>Get Bot Token</td>
+                <td>Message @BotFather on Telegram with /newbot command</td>
+            </tr>
+        </table>
+
+        <footer>
+            <p><strong>DisasterBag Setup Guide v1.0</strong><br>
+            For support, refer to your documentation or contact the development team.</p>
+            <p style="margin-top: 10px; font-size: 0.85em;">Last Updated: April 2026</p>
+        </footer>
+    </div>
+</body>
+</html>

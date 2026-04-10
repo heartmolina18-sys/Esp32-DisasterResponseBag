@@ -1329,12 +1329,11 @@ void runSOSPattern() {
   if (sosPatternStep < SOS_ACTUAL_STEPS) {
     if (sosDurations[sosPatternStep][0] > 0) {
       if (now - sosPatternTimer < sosDurations[sosPatternStep][0]) {
-        // Use standard tone for SOS (non-blocking)
-        tone(PIEZO_PIN, 1000);
-        digitalWrite(PIEZO_PIN2, LOW);  // Keep pin2 low for single-ended during SOS
+        tone(PIEZO_PIN, 1000);  // Beep ON at 1kHz on main pin
+        digitalWrite(PIEZO_PIN2, !digitalRead(PIEZO_PIN));  // Invert second pin for BTL
         return;
       }
-      noTone(PIEZO_PIN);
+      noTone(PIEZO_PIN);  // Beep OFF
       digitalWrite(PIEZO_PIN2, LOW);
     }
     // OFF phase
@@ -1808,42 +1807,39 @@ void updateSignalStrength() {
   }
 }
 
-// BTL state
-volatile bool btlRunning = false;
-
 void stopTone() {
-  btlRunning = false;
+  noTone(PIEZO_PIN);
+  noTone(PIEZO_PIN2);
   digitalWrite(PIEZO_PIN, LOW);
   digitalWrite(PIEZO_PIN2, LOW);
 }
 
-// BTL (Bridge Tied Load) Tone - manual toggle for true differential drive
-// Generates square wave by toggling both pins in opposite states
+// BTL (Bridge Tied Load) Tone - drives both pins 180° out of phase for double volume
+// Uses PWM by driving pins in opposite states rapidly
 void toneBTL(uint16_t frequency, uint32_t duration) {
-  btlRunning = true;
+  // Use standard tone() on both pins in opposite phases
+  tone(PIEZO_PIN, frequency);
   
-  uint32_t halfPeriodUs = 500000 / frequency;  // microseconds per half-period
+  // Invert second pin using digitalWrite toggle in a tight loop
+  // This creates the differential drive effect
   unsigned long startTime = millis();
+  uint32_t halfPeriod = 500000 / frequency;  // in microseconds
   
-  while (btlRunning && (duration == 0 || (millis() - startTime) < duration)) {
-    // First half: PIN1 HIGH, PIN2 LOW
-    digitalWrite(PIEZO_PIN, HIGH);
-    digitalWrite(PIEZO_PIN2, LOW);
-    delayMicroseconds(halfPeriodUs);
-    
-    // Second half: PIN1 LOW, PIN2 HIGH
-    digitalWrite(PIEZO_PIN, LOW);
-    digitalWrite(PIEZO_PIN2, HIGH);
-    delayMicroseconds(halfPeriodUs);
+  while (duration == 0 || (millis() - startTime) < duration) {
+    digitalWrite(PIEZO_PIN2, !digitalRead(PIEZO_PIN));
+    delayMicroseconds(halfPeriod);
   }
   
-  stopTone();
+  noTone(PIEZO_PIN);
+  noTone(PIEZO_PIN2);
 }
 
-// BTL No Tone - stops the tone
+// BTL No Tone - stops both channels
 void noToneBTL() {
-  btlRunning = false;
-  stopTone();
+  noTone(PIEZO_PIN);
+  noTone(PIEZO_PIN2);
+  digitalWrite(PIEZO_PIN, LOW);
+  digitalWrite(PIEZO_PIN2, LOW);
 }
 
 // Play different alert tones

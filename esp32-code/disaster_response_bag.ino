@@ -197,6 +197,11 @@ void IRAM_ATTR button1ISR();
 void IRAM_ATTR button2ISR();
 void IRAM_ATTR configButtonISR();
 
+// Piezo BTL functions
+void toneBTL(uint16_t frequency, uint32_t duration = 0);
+void noToneBTL();
+void stopTone();
+
 // ==================== MAIN CODE ====================
 
 // ==================== INTERRUPT SERVICE ROUTINE ====================
@@ -1324,10 +1329,12 @@ void runSOSPattern() {
   if (sosPatternStep < SOS_ACTUAL_STEPS) {
     if (sosDurations[sosPatternStep][0] > 0) {
       if (now - sosPatternTimer < sosDurations[sosPatternStep][0]) {
-        toneBTL(1000);  // Beep ON at 1kHz using BTL for increased volume
+        tone(PIEZO_PIN, 1000);  // Beep ON at 1kHz on main pin
+        digitalWrite(PIEZO_PIN2, !digitalRead(PIEZO_PIN));  // Invert second pin for BTL
         return;
       }
-      noToneBTL();  // Beep OFF
+      noTone(PIEZO_PIN);  // Beep OFF
+      digitalWrite(PIEZO_PIN2, LOW);
     }
     // OFF phase
     if (now - sosPatternTimer < sosDurations[sosPatternStep][0] + sosDurations[sosPatternStep][1]) {
@@ -1808,28 +1815,29 @@ void stopTone() {
 }
 
 // BTL (Bridge Tied Load) Tone - drives both pins 180° out of phase for double volume
-void toneBTL(uint16_t frequency, uint32_t duration = 0) {
-  // Use LEDC PWM on ESP32 for precise tone generation with BTL configuration
-  // Channel 0 for PIEZO_PIN (normal phase)
-  ledcSetup(0, frequency, 8);
-  ledcAttachPin(PIEZO_PIN, 0);
-  ledcWrite(0, 128);  // 50% duty cycle
+// Uses PWM by driving pins in opposite states rapidly
+void toneBTL(uint16_t frequency, uint32_t duration) {
+  // Use standard tone() on both pins in opposite phases
+  tone(PIEZO_PIN, frequency);
   
-  // Channel 1 for PIEZO_PIN2 (inverted phase)
-  ledcSetup(1, frequency, 8);
-  ledcAttachPin(PIEZO_PIN2, 1);
-  ledcWrite(1, 127);  // 50% duty cycle (inverted timing handled by PWM)
+  // Invert second pin using digitalWrite toggle in a tight loop
+  // This creates the differential drive effect
+  unsigned long startTime = millis();
+  uint32_t halfPeriod = 500000 / frequency;  // in microseconds
   
-  if (duration > 0) {
-    delay(duration);
-    stopTone();
+  while (duration == 0 || (millis() - startTime) < duration) {
+    digitalWrite(PIEZO_PIN2, !digitalRead(PIEZO_PIN));
+    delayMicroseconds(halfPeriod);
   }
+  
+  noTone(PIEZO_PIN);
+  noTone(PIEZO_PIN2);
 }
 
 // BTL No Tone - stops both channels
 void noToneBTL() {
-  ledcDetachPin(PIEZO_PIN);
-  ledcDetachPin(PIEZO_PIN2);
+  noTone(PIEZO_PIN);
+  noTone(PIEZO_PIN2);
   digitalWrite(PIEZO_PIN, LOW);
   digitalWrite(PIEZO_PIN2, LOW);
 }

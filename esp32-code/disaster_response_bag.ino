@@ -1374,14 +1374,26 @@ bool sendToAllRecipients(String message, String messageType) {
     
     // Ensure HTTP is fully terminated before SMS
     Serial.println("[SEND] Resetting module for SMS...");
-    sendATCommand("AT+HTTPTERM", "OK", 1000);
+    sendATCommand("AT+HTTPTERM", "OK", 2000);
+    delay(1000);
+    
+    // Full module reset to SMS mode
+    sendATCommand("AT", "OK", 1000);
     delay(500);
     
-    // Flush serial buffer and wait before SMS to ensure module is ready
+    // Flush serial buffer
     while (LTESerial.available()) LTESerial.read();
+    delay(1000);
     
-    // Reset SMS mode explicitly
-    sendATCommand("AT+CMGF=1", "OK", 2000);
+    // Reset SMS mode with longer timeout
+    for (int retry = 0; retry < 3; retry++) {
+      if (sendATCommand("AT+CMGF=1", "OK", 3000)) {
+        break;
+      }
+      delay(500);
+    }
+    
+    sendATCommand("AT+CSCS=\"GSM\"", "OK", 1000);
     delay(1000);
     
     for (int i = 0; i < config.smsCount; i++) {
@@ -1651,10 +1663,27 @@ bool sendSMSAlert(String phoneNumber, String message) {
     return false;
   }
   
-  // Message is already short (built by buildStressSMS/buildStatusSMS)
-  String smsMessage = message;
+  // Clean up phone number
+  String cleanNumber = phoneNumber;
+  cleanNumber.trim();
   
+  // Remove any spaces or dashes
+  cleanNumber.replace(" ", "");
+  cleanNumber.replace("-", "");
+  
+  // Add + if not present
+  if (cleanNumber.charAt(0) != '+') {
+    cleanNumber = "+" + cleanNumber;
+  }
+  
+  // Remove duplicate + signs
+  while (cleanNumber.indexOf("++") != -1) {
+    cleanNumber.replace("++", "+");
+  }
+  
+  Serial.println("[SMS] Cleaned number: " + cleanNumber);
   Serial.println("[SMS] Setting text mode...");
+  
   if (!sendATCommand("AT+CMGF=1", "OK", 2000)) {
     Serial.println("[SMS] Failed to set text mode");
     return false;
@@ -1662,10 +1691,10 @@ bool sendSMSAlert(String phoneNumber, String message) {
   
   sendATCommand("AT+CSCS=\"GSM\"", "OK", 1000);
   
-  String smsCmd = "AT+CMGS=\"" + phoneNumber + "\"";
+  String smsCmd = "AT+CMGS=\"" + cleanNumber + "\"";
   Serial.println("[SMS] Sending command: " + smsCmd);
   LTESerial.println(smsCmd);
-  delay(500);
+  delay(1000);  // Increased delay for module to respond
   
   unsigned long startTime = millis();
   bool promptReceived = false;
@@ -1688,8 +1717,8 @@ bool sendSMSAlert(String phoneNumber, String message) {
   
   Serial.println("[SMS] Sending message text...");
   LTESerial.print(smsMessage);
-  delay(100);
-  LTESerial.write(0x1A);
+  delay(200);
+  LTESerial.write(0x1A);  // Send Ctrl+Z to complete SMS
   
   startTime = millis();
   String response = "";
@@ -1704,15 +1733,22 @@ bool sendSMSAlert(String phoneNumber, String message) {
       return true;
     }
     
-    if (response.indexOf("ERROR") != -1) {
+    if (response.indexOf("ERROR") != -1 || response.indexOf("+CMS ERROR") != -1) {
       Serial.println("[SMS] Failed - got ERROR response");
       Serial.println("[SMS] Response: " + response);
+      
+      // Try to recover module state
+      sendATCommand("\x1B", "OK", 1000);
+      delay(500);
+      sendATCommand("AT", "OK", 1000);
+      
       return false;
     }
     
     delay(100);
   }
   
+  Serial.println("[SMS] Timeout waiting for response");
   return false;
 }
 

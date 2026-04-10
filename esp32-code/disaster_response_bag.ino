@@ -1329,12 +1329,12 @@ void runSOSPattern() {
   if (sosPatternStep < SOS_ACTUAL_STEPS) {
     if (sosDurations[sosPatternStep][0] > 0) {
       if (now - sosPatternTimer < sosDurations[sosPatternStep][0]) {
-        tone(PIEZO_PIN, 1000);  // Beep ON at 1kHz on main pin
-        digitalWrite(PIEZO_PIN2, !digitalRead(PIEZO_PIN));  // Invert second pin for BTL
+        if (!btlRunning) {
+          toneBTL(1000, 0);  // Beep ON at 1kHz using BTL (0 = continuous)
+        }
         return;
       }
-      noTone(PIEZO_PIN);  // Beep OFF
-      digitalWrite(PIEZO_PIN2, LOW);
+      stopTone();  // Beep OFF
     }
     // OFF phase
     if (now - sosPatternTimer < sosDurations[sosPatternStep][0] + sosDurations[sosPatternStep][1]) {
@@ -1807,39 +1807,59 @@ void updateSignalStrength() {
   }
 }
 
+// BTL state
+volatile bool btlRunning = false;
+hw_timer_t *btlTimer = NULL;
+volatile bool btlPinState = false;
+
+// Timer ISR for true BTL - toggles both pins in opposite states
+void IRAM_ATTR btlTimerISR() {
+  btlPinState = !btlPinState;
+  if (btlPinState) {
+    GPIO.out_w1ts = (1 << PIEZO_PIN);   // Set PIEZO_PIN HIGH
+    GPIO.out_w1tc = (1 << PIEZO_PIN2);  // Set PIEZO_PIN2 LOW
+  } else {
+    GPIO.out_w1tc = (1 << PIEZO_PIN);   // Set PIEZO_PIN LOW
+    GPIO.out_w1ts = (1 << PIEZO_PIN2);  // Set PIEZO_PIN2 HIGH
+  }
+}
+
 void stopTone() {
-  noTone(PIEZO_PIN);
-  noTone(PIEZO_PIN2);
+  if (btlTimer != NULL) {
+    timerAlarmDisable(btlTimer);
+    btlRunning = false;
+  }
   digitalWrite(PIEZO_PIN, LOW);
   digitalWrite(PIEZO_PIN2, LOW);
 }
 
 // BTL (Bridge Tied Load) Tone - drives both pins 180° out of phase for double volume
-// Uses PWM by driving pins in opposite states rapidly
+// Uses hardware timer ISR for precise timing with true differential output
 void toneBTL(uint16_t frequency, uint32_t duration) {
-  // Use standard tone() on both pins in opposite phases
-  tone(PIEZO_PIN, frequency);
+  // Calculate timer interval (half period in microseconds)
+  // We toggle at 2x frequency since each toggle is half a cycle
+  uint32_t timerInterval = 500000 / frequency;  // microseconds per half-period
   
-  // Invert second pin using digitalWrite toggle in a tight loop
-  // This creates the differential drive effect
-  unsigned long startTime = millis();
-  uint32_t halfPeriod = 500000 / frequency;  // in microseconds
-  
-  while (duration == 0 || (millis() - startTime) < duration) {
-    digitalWrite(PIEZO_PIN2, !digitalRead(PIEZO_PIN));
-    delayMicroseconds(halfPeriod);
+  // Setup hardware timer if not already done
+  if (btlTimer == NULL) {
+    btlTimer = timerBegin(0, 80, true);  // Timer 0, prescaler 80 (1MHz), count up
+    timerAttachInterrupt(btlTimer, &btlTimerISR, true);
   }
   
-  noTone(PIEZO_PIN);
-  noTone(PIEZO_PIN2);
+  // Set timer alarm
+  timerAlarmWrite(btlTimer, timerInterval, true);  // Auto-reload
+  timerAlarmEnable(btlTimer);
+  btlRunning = true;
+  
+  if (duration > 0) {
+    delay(duration);
+    stopTone();
+  }
 }
 
-// BTL No Tone - stops both channels
+// BTL No Tone - stops the timer
 void noToneBTL() {
-  noTone(PIEZO_PIN);
-  noTone(PIEZO_PIN2);
-  digitalWrite(PIEZO_PIN, LOW);
-  digitalWrite(PIEZO_PIN2, LOW);
+  stopTone();
 }
 
 // Play different alert tones

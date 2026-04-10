@@ -1415,13 +1415,14 @@ bool sendToAllRecipients(String message, String messageType) {
   return anySuccess;
 }
 
-// Short SMS versions (max 160 chars)
+// Short SMS versions (max 160 chars) - avoid special URL characters for GSM compatibility
 String buildStressSMS() {
   String msg = "[STRESS] " + String(config.deviceName) + " needs help!";
   if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
-    msg += " maps.google.com/?q=" + String(latitude, 5) + "," + String(longitude, 5);
+    // Simple format without URL special chars (? and =)
+    msg += " Loc: " + String(latitude, 5) + "," + String(longitude, 5);
   } else {
-    msg += " No location available.";
+    msg += " No location.";
   }
   return msg;
 }

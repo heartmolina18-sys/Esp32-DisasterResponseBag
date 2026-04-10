@@ -1329,12 +1329,13 @@ void runSOSPattern() {
   if (sosPatternStep < SOS_ACTUAL_STEPS) {
     if (sosDurations[sosPatternStep][0] > 0) {
       if (now - sosPatternTimer < sosDurations[sosPatternStep][0]) {
-        if (!btlRunning) {
-          toneBTL(1000, 0);  // Beep ON at 1kHz using BTL (0 = continuous)
-        }
+        // Use standard tone for SOS (non-blocking)
+        tone(PIEZO_PIN, 1000);
+        digitalWrite(PIEZO_PIN2, LOW);  // Keep pin2 low for single-ended during SOS
         return;
       }
-      stopTone();  // Beep OFF
+      noTone(PIEZO_PIN);
+      digitalWrite(PIEZO_PIN2, LOW);
     }
     // OFF phase
     if (now - sosPatternTimer < sosDurations[sosPatternStep][0] + sosDurations[sosPatternStep][1]) {
@@ -1809,56 +1810,39 @@ void updateSignalStrength() {
 
 // BTL state
 volatile bool btlRunning = false;
-hw_timer_t *btlTimer = NULL;
-volatile bool btlPinState = false;
-
-// Timer ISR for true BTL - toggles both pins in opposite states
-void IRAM_ATTR btlTimerISR() {
-  btlPinState = !btlPinState;
-  if (btlPinState) {
-    GPIO.out_w1ts = (1 << PIEZO_PIN);   // Set PIEZO_PIN HIGH
-    GPIO.out_w1tc = (1 << PIEZO_PIN2);  // Set PIEZO_PIN2 LOW
-  } else {
-    GPIO.out_w1tc = (1 << PIEZO_PIN);   // Set PIEZO_PIN LOW
-    GPIO.out_w1ts = (1 << PIEZO_PIN2);  // Set PIEZO_PIN2 HIGH
-  }
-}
 
 void stopTone() {
-  if (btlTimer != NULL) {
-    timerAlarmDisable(btlTimer);
-    btlRunning = false;
-  }
+  btlRunning = false;
   digitalWrite(PIEZO_PIN, LOW);
   digitalWrite(PIEZO_PIN2, LOW);
 }
 
-// BTL (Bridge Tied Load) Tone - drives both pins 180° out of phase for double volume
-// Uses hardware timer ISR for precise timing with true differential output
+// BTL (Bridge Tied Load) Tone - manual toggle for true differential drive
+// Generates square wave by toggling both pins in opposite states
 void toneBTL(uint16_t frequency, uint32_t duration) {
-  // Calculate timer interval (half period in microseconds)
-  // We toggle at 2x frequency since each toggle is half a cycle
-  uint32_t timerInterval = 500000 / frequency;  // microseconds per half-period
-  
-  // Setup hardware timer if not already done
-  if (btlTimer == NULL) {
-    btlTimer = timerBegin(0, 80, true);  // Timer 0, prescaler 80 (1MHz), count up
-    timerAttachInterrupt(btlTimer, &btlTimerISR, true);
-  }
-  
-  // Set timer alarm
-  timerAlarmWrite(btlTimer, timerInterval, true);  // Auto-reload
-  timerAlarmEnable(btlTimer);
   btlRunning = true;
   
-  if (duration > 0) {
-    delay(duration);
-    stopTone();
+  uint32_t halfPeriodUs = 500000 / frequency;  // microseconds per half-period
+  unsigned long startTime = millis();
+  
+  while (btlRunning && (duration == 0 || (millis() - startTime) < duration)) {
+    // First half: PIN1 HIGH, PIN2 LOW
+    digitalWrite(PIEZO_PIN, HIGH);
+    digitalWrite(PIEZO_PIN2, LOW);
+    delayMicroseconds(halfPeriodUs);
+    
+    // Second half: PIN1 LOW, PIN2 HIGH
+    digitalWrite(PIEZO_PIN, LOW);
+    digitalWrite(PIEZO_PIN2, HIGH);
+    delayMicroseconds(halfPeriodUs);
   }
+  
+  stopTone();
 }
 
-// BTL No Tone - stops the timer
+// BTL No Tone - stops the tone
 void noToneBTL() {
+  btlRunning = false;
   stopTone();
 }
 

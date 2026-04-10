@@ -1415,11 +1415,11 @@ bool sendToAllRecipients(String message, String messageType) {
   return anySuccess;
 }
 
-// Short SMS versions (max 160 chars) - avoid special URL characters for GSM compatibility
+// Short SMS versions (max 160 chars) - GSM 7-bit compatible characters only
+// Avoid: [ ] { } | ^ ~ \ (not in basic GSM alphabet)
 String buildStressSMS() {
-  String msg = "[STRESS] " + String(config.deviceName) + " needs help!";
+  String msg = "STRESS - " + String(config.deviceName) + " needs help!";
   if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
-    // Simple format without URL special chars (? and =)
     msg += " Loc: " + String(latitude, 5) + "," + String(longitude, 5);
   } else {
     msg += " No location.";
@@ -1428,9 +1428,8 @@ String buildStressSMS() {
 }
 
 String buildStatusSMS() {
-  String msg = "[SAFE] " + String(config.deviceName) + " is OK!";
+  String msg = "SAFE - " + String(config.deviceName) + " is OK!";
   if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
-    // Simple format without URL special chars (? and =)
     msg += " Loc: " + String(latitude, 5) + "," + String(longitude, 5);
   } else {
     msg += " No location.";

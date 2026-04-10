@@ -1368,9 +1368,17 @@ bool sendToAllRecipients(String message) {
     Serial.println("[SEND] SMS Count: " + String(config.smsCount));
     Serial.println("[SEND] Sending to SMS recipients...");
     
+    // Ensure HTTP is fully terminated before SMS
+    Serial.println("[SEND] Resetting module for SMS...");
+    sendATCommand("AT+HTTPTERM", "OK", 1000);
+    delay(500);
+    
     // Flush serial buffer and wait before SMS to ensure module is ready
     while (LTESerial.available()) LTESerial.read();
-    delay(2000);
+    
+    // Reset SMS mode explicitly
+    sendATCommand("AT+CMGF=1", "OK", 2000);
+    delay(1000);
     
     for (int i = 0; i < config.smsCount; i++) {
       Serial.print("[SEND] SMS #" + String(i+1) + ": ");

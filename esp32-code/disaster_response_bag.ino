@@ -1626,13 +1626,21 @@ bool sendSMSAlert(String phoneNumber, String message) {
     return false;
   }
   
-  // Strip special characters for SMS
+  // Create a shorter SMS-specific message (160 char limit for single SMS)
   String smsMessage = message;
-  smsMessage.replace("https://", "");
   
-  if (smsMessage.length() > 450) {
-    smsMessage = smsMessage.substring(0, 447) + "...";
+  // Remove URLs and unnecessary text for SMS
+  smsMessage.replace("https://", "");
+  smsMessage.replace("http://", "");
+  smsMessage.replace("maps.google.com/?q=", "");
+  smsMessage.replace("\n\n", "\n");
+  
+  // Truncate to 155 chars to stay within 160 limit
+  if (smsMessage.length() > 155) {
+    smsMessage = smsMessage.substring(0, 152) + "...";
   }
+  
+  Serial.println("[SMS] Truncated length: " + String(smsMessage.length()));
   
   Serial.println("[SMS] Setting text mode...");
   if (!sendATCommand("AT+CMGF=1", "OK", 2000)) {

@@ -1693,6 +1693,9 @@ bool sendSMSAlert(String phoneNumber, String message) {
   
   sendATCommand("AT+CSCS=\"GSM\"", "OK", 1000);
   
+  // Message is already short (built by buildStressSMS/buildStatusSMS)
+  String smsMessage = message;
+  
   String smsCmd = "AT+CMGS=\"" + cleanNumber + "\"";
   Serial.println("[SMS] Sending command: " + smsCmd);
   LTESerial.println(smsCmd);

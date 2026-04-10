@@ -1368,10 +1368,6 @@ bool sendToAllRecipients(String message) {
     Serial.println("[SEND] SMS Count: " + String(config.smsCount));
     Serial.println("[SEND] Sending to SMS recipients...");
     
-    // Flush serial buffer and wait before SMS to ensure module is ready
-    while (LTESerial.available()) LTESerial.read();
-    delay(2000);
-    
     for (int i = 0; i < config.smsCount; i++) {
       Serial.print("[SEND] SMS #" + String(i+1) + ": ");
       Serial.println(config.smsNumbers[i]);

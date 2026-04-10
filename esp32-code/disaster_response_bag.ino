@@ -1356,8 +1356,18 @@ bool sendToAllRecipients(String message, String messageType) {
   String smsMessage = (messageType == "stress") ? buildStressSMS() : buildStatusSMS();
   Serial.println("[SEND] SMS message (" + String(smsMessage.length()) + " chars): " + smsMessage);
   
+  // Set timeout to prevent hanging (max 60 seconds per send attempt)
+  unsigned long sendStartTime = millis();
+  const unsigned long SEND_TIMEOUT = 60000;  // 60 seconds max
+  
   // Send to all Telegram recipients (full message)
   for (int i = 0; i < config.telegramCount; i++) {
+    // Check timeout
+    if (millis() - sendStartTime > SEND_TIMEOUT) {
+      Serial.println("[SEND] TIMEOUT - Aborting remaining sends");
+      break;
+    }
+    
     Serial.print("[SEND] Sending to Telegram: ");
     Serial.println(config.telegramChatIds[i]);
     
@@ -1397,6 +1407,12 @@ bool sendToAllRecipients(String message, String messageType) {
     delay(1000);
     
     for (int i = 0; i < config.smsCount; i++) {
+      // Check timeout
+      if (millis() - sendStartTime > SEND_TIMEOUT) {
+        Serial.println("[SEND] TIMEOUT - Aborting remaining SMS");
+        break;
+      }
+      
       Serial.print("[SEND] SMS #" + String(i+1) + ": ");
       Serial.println(config.smsNumbers[i]);
       

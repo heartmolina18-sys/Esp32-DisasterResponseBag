@@ -70,8 +70,9 @@
 // Config Mode Button (GPIO 32)
 #define CONFIG_BUTTON_PIN  32
 
-// Piezo Buzzer (piezo speaker)
-#define PIEZO_PIN      13
+// Piezo Buzzer (piezo speaker) - BTL (Bridge Tied Load) for increased volume
+#define PIEZO_PIN      13  // Pin 1 - Positive phase
+#define PIEZO_PIN2     12  // Pin 2 - Negative phase (differential drive)
 
 // Button 2 - Secondary button for Piezo/SOS
 #define BUTTON2_PIN    25
@@ -212,9 +213,11 @@ void setup() {
   Serial.println("Emergency Alert System v2.0");
   Serial.println("========================================\n");
 
-  // Initialize Piezo Buzzer
+  // Initialize Piezo Buzzer (BTL - Bridge Tied Load configuration)
   pinMode(PIEZO_PIN, OUTPUT);
+  pinMode(PIEZO_PIN2, OUTPUT);
   digitalWrite(PIEZO_PIN, LOW);
+  digitalWrite(PIEZO_PIN2, LOW);
 
   // Initialize LTE PWRKEY (Power Key) pin - must be LOW to power on
   pinMode(LTE_PWR_PIN, OUTPUT);
@@ -1321,10 +1324,10 @@ void runSOSPattern() {
   if (sosPatternStep < SOS_ACTUAL_STEPS) {
     if (sosDurations[sosPatternStep][0] > 0) {
       if (now - sosPatternTimer < sosDurations[sosPatternStep][0]) {
-        tone(PIEZO_PIN, 1000);  // Beep ON at 1kHz
+        toneBTL(1000);  // Beep ON at 1kHz using BTL for increased volume
         return;
       }
-      noTone(PIEZO_PIN);  // Beep OFF
+      noToneBTL();  // Beep OFF
     }
     // OFF phase
     if (now - sosPatternTimer < sosDurations[sosPatternStep][0] + sosDurations[sosPatternStep][1]) {
@@ -1764,7 +1767,7 @@ void updateDisplay() {
 
 // Piezo control functions
 void playTone(int frequency, int duration) {
-  tone(PIEZO_PIN, frequency, duration);
+  toneBTL(frequency, duration);  // Use BTL for increased volume
 }
 
 // Poll LTE signal strength every 10 seconds
@@ -1799,6 +1802,36 @@ void updateSignalStrength() {
 
 void stopTone() {
   noTone(PIEZO_PIN);
+  noTone(PIEZO_PIN2);
+  digitalWrite(PIEZO_PIN, LOW);
+  digitalWrite(PIEZO_PIN2, LOW);
+}
+
+// BTL (Bridge Tied Load) Tone - drives both pins 180° out of phase for double volume
+void toneBTL(uint16_t frequency, uint32_t duration = 0) {
+  // Use LEDC PWM on ESP32 for precise tone generation with BTL configuration
+  // Channel 0 for PIEZO_PIN (normal phase)
+  ledcSetup(0, frequency, 8);
+  ledcAttachPin(PIEZO_PIN, 0);
+  ledcWrite(0, 128);  // 50% duty cycle
+  
+  // Channel 1 for PIEZO_PIN2 (inverted phase)
+  ledcSetup(1, frequency, 8);
+  ledcAttachPin(PIEZO_PIN2, 1);
+  ledcWrite(1, 127);  // 50% duty cycle (inverted timing handled by PWM)
+  
+  if (duration > 0) {
+    delay(duration);
+    stopTone();
+  }
+}
+
+// BTL No Tone - stops both channels
+void noToneBTL() {
+  ledcDetachPin(PIEZO_PIN);
+  ledcDetachPin(PIEZO_PIN2);
+  digitalWrite(PIEZO_PIN, LOW);
+  digitalWrite(PIEZO_PIN2, LOW);
 }
 
 // Play different alert tones

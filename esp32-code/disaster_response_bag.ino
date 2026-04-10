@@ -1199,7 +1199,7 @@ void handleStressButton() {
   String message = buildStressMessage();
   
   Serial.println("[STRESS] Sending to recipients...");
-  bool success = sendToAllRecipients(message);
+  bool success = sendToAllRecipients(message, "stress");
   
   if (success) {
     alertCount++;
@@ -1257,7 +1257,7 @@ void handleSafeButton() {
   String message = buildStatusMessage();
   
   Serial.println("[SAFE] Sending to recipients...");
-  bool success = sendToAllRecipients(message);
+  bool success = sendToAllRecipients(message, "safe");
   
   if (success) {
     Serial.println("[SAFE] Status sent successfully!");
@@ -1349,10 +1349,14 @@ void runSOSPattern() {
   }
 }
 
-bool sendToAllRecipients(String message) {
+bool sendToAllRecipients(String message, String messageType) {
   bool anySuccess = false;
   
-  // Send to all Telegram recipients
+  // Build short SMS version (under 160 chars, maps link only)
+  String smsMessage = (messageType == "stress") ? buildStressSMS() : buildStatusSMS();
+  Serial.println("[SEND] SMS message (" + String(smsMessage.length()) + " chars): " + smsMessage);
+  
+  // Send to all Telegram recipients (full message)
   for (int i = 0; i < config.telegramCount; i++) {
     Serial.print("[SEND] Sending to Telegram: ");
     Serial.println(config.telegramChatIds[i]);
@@ -1363,7 +1367,7 @@ bool sendToAllRecipients(String message) {
     delay(500); // Small delay between sends
   }
   
-  // Send to all SMS recipients (parallel to Telegram, not as fallback)
+  // Send to all SMS recipients (short message)
   if (config.smsCount > 0) {
     Serial.println("[SEND] SMS Count: " + String(config.smsCount));
     Serial.println("[SEND] Sending to SMS recipients...");
@@ -1384,7 +1388,7 @@ bool sendToAllRecipients(String message) {
       Serial.print("[SEND] SMS #" + String(i+1) + ": ");
       Serial.println(config.smsNumbers[i]);
       
-      if (sendSMSAlert(String(config.smsNumbers[i]), message)) {
+      if (sendSMSAlert(String(config.smsNumbers[i]), smsMessage)) {
         anySuccess = true;
         Serial.println("[SEND] SMS #" + String(i+1) + " sent successfully");
       } else {
@@ -1397,6 +1401,27 @@ bool sendToAllRecipients(String message) {
   }
   
   return anySuccess;
+}
+
+// Short SMS versions (max 160 chars)
+String buildStressSMS() {
+  String msg = "[STRESS] " + String(config.deviceName) + " needs help!";
+  if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
+    msg += " maps.google.com/?q=" + String(latitude, 5) + "," + String(longitude, 5);
+  } else {
+    msg += " No location available.";
+  }
+  return msg;
+}
+
+String buildStatusSMS() {
+  String msg = "[SAFE] " + String(config.deviceName) + " is OK!";
+  if (gpsFixed || (latitude != 0.0 && longitude != 0.0)) {
+    msg += " maps.google.com/?q=" + String(latitude, 5) + "," + String(longitude, 5);
+  } else {
+    msg += " No location available.";
+  }
+  return msg;
 }
 
 String buildStressMessage() {
@@ -1626,21 +1651,8 @@ bool sendSMSAlert(String phoneNumber, String message) {
     return false;
   }
   
-  // Create a shorter SMS-specific message (160 char limit for single SMS)
+  // Message is already short (built by buildStressSMS/buildStatusSMS)
   String smsMessage = message;
-  
-  // Remove URLs and unnecessary text for SMS
-  smsMessage.replace("https://", "");
-  smsMessage.replace("http://", "");
-  smsMessage.replace("maps.google.com/?q=", "");
-  smsMessage.replace("\n\n", "\n");
-  
-  // Truncate to 155 chars to stay within 160 limit
-  if (smsMessage.length() > 155) {
-    smsMessage = smsMessage.substring(0, 152) + "...";
-  }
-  
-  Serial.println("[SMS] Truncated length: " + String(smsMessage.length()));
   
   Serial.println("[SMS] Setting text mode...");
   if (!sendATCommand("AT+CMGF=1", "OK", 2000)) {
